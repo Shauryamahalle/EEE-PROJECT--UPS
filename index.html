@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D DC UPS Circuit Simulator - FY ENTC Project</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .label-3d {
+            position: absolute;
+            pointer-events: auto;
+            transform: translate(-50%, -100%);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 10;
+        }
+        .label-3d:hover {
+            z-index: 30;
+            transform: translate(-50%, -105%) scale(1.05);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+        /* Custom scrollbar for small screens */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="w-full h-full"></div>
+
+    <!-- 3D Floating HTML Labels Container (Hidden by default so model is completely clear) -->
+    <div id="labels-container" class="absolute inset-0 pointer-events-none overflow-hidden" style="display: none;"></div>
+
+    <!-- Top Compact Header & Camera Presets Bar -->
+    <header class="absolute top-2.5 left-2.5 right-2.5 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-20">
+        <!-- Compact Project Title Pill -->
+        <div class="glass-panel px-3 py-1.5 rounded-xl pointer-events-auto flex items-center gap-2.5 shadow-lg">
+            <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" id="header-status-dot"></div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-white">12V DC UPS 3D Model</span>
+                <span id="mode-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    MAINS AC ACTIVE
+                </span>
+            </div>
+        </div>
+
+        <!-- Camera View & Overlay Controls -->
+        <div class="glass-panel p-1 rounded-xl pointer-events-auto flex flex-wrap items-center gap-1 shadow-lg">
+            <button onclick="setCameraView('overview')" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700">
+                Full Bench
+            </button>
+            <button onclick="setCameraView('pcb')" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700">
+                Breadboard Zoom
+            </button>
+            <button onclick="setCameraView('protection')" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700">
+                MCB & Transformer
+            </button>
+            <button onclick="toggleLabels()" id="btn-labels" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition border border-slate-700">
+                3D Pins: OFF
+            </button>
+            <button onclick="toggleModal('syllabus-modal')" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition border border-amber-500/40">
+                Viva Notes
+            </button>
+        </div>
+    </header>
+
+    <!-- Sleek Bottom Dock: Unobstructed View of the 3D Model -->
+    <aside class="absolute bottom-3 left-1/2 -translate-x-1/2 w-[calc(100vw-1.5rem)] max-w-4xl glass-panel rounded-2xl px-3.5 py-2.5 pointer-events-auto z-20 shadow-2xl">
+        <div class="flex flex-col md:flex-row items-center justify-between gap-2.5">
+            <!-- Interactive Action Buttons -->
+            <div class="flex flex-wrap items-center justify-center gap-2 w-full md:w-auto">
+                <button id="btn-mains" onclick="toggleMainsPower()" class="py-1.5 px-3 rounded-lg font-semibold text-xs text-white bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] transition flex items-center gap-1.5 shadow">
+                    <span id="btn-mains-icon">⚡</span>
+                    <span id="btn-mains-label">Cut 230V Mains (Blackout)</span>
+                </button>
+                <button id="btn-fault" onclick="triggerFault()" class="py-1.5 px-3 rounded-lg font-semibold text-xs text-rose-200 bg-rose-600/80 hover:bg-rose-600 active:scale-[0.99] transition border border-rose-500/40">
+                    ⚠️ Short Circuit
+                </button>
+                <button id="btn-reset" onclick="resetFault()" class="hidden py-1.5 px-3 rounded-lg font-semibold text-xs text-emerald-200 bg-emerald-600/80 hover:bg-emerald-600 active:scale-[0.99] transition border border-emerald-500/40">
+                    🔄 Reset MCB & Fuse
+                </button>
+            </div>
+
+            <!-- Compact Live Readout Strip -->
+            <div class="flex flex-wrap items-center justify-center gap-3 text-xs border-t md:border-t-0 border-slate-700/80 pt-2 md:pt-0 w-full md:w-auto">
+                <div class="flex items-center gap-1">
+                    <span class="text-slate-400 text-[11px]">MCB:</span>
+                    <span id="mcb-state-text" class="font-bold text-emerald-400 mono text-[11px]">ON</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-slate-400 text-[11px]">Fuse:</span>
+                    <span id="fuse-state-text" class="font-bold text-emerald-400 mono text-[11px]">OK</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-slate-400 text-[11px]">AC:</span>
+                    <span id="tel-ac" class="font-bold text-sky-400 mono text-[11px]">15.0V</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-slate-400 text-[11px]">Rect:</span>
+                    <span id="tel-rect" class="font-bold text-amber-400 mono text-[11px]">19.8V</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-slate-400 text-[11px]">LM317:</span>
+                    <span id="tel-reg" class="font-bold text-emerald-400 mono text-[11px]">13.80V</span>
+                </div>
+                <div class="flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700">
+                    <span class="text-slate-400 text-[11px]">DMM Out:</span>
+                    <span id="tel-out" class="font-bold text-emerald-300 mono text-xs">13.45V</span>
+                </div>
+                <span id="tel-batt" class="hidden lg:inline font-semibold text-emerald-400 mono text-[11px]">Charging (+0.28A)</span>
+                <span id="tel-diode" class="hidden">D1 Forward / D2 Blocked</span>
+                <span id="tel-router" class="hidden">ONLINE</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Viva & Syllabus Equations Modal -->
+    <div id="syllabus-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-panel max-w-2xl w-full rounded-2xl p-6 border border-slate-700 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+                <div>
+                    <span class="text-xs font-bold uppercase text-amber-400">FY ENTC Syllabus Mapping</span>
+                    <h2 class="text-lg font-bold text-white">Viva-Voce Guide & Circuit Equations</h2>
+                </div>
+                <button onclick="toggleModal('syllabus-modal')" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold">✕</button>
+            </div>
+
+            <div class="space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 class="font-bold text-white mb-1">1. Study of Rectifier & Capacitive Filter (Exp. 2 & 8)</h3>
+                    <p class="text-slate-400 mb-2">The 230V, 50Hz AC supply steps down to $15\text{V}_{\text{rms}}$ AC. Four 1N4007 silicon diodes form a full-wave bridge rectifier (dropping $2 \times 0.7\text{V} = 1.4\text{V}$), smoothed by the $2200\mu\text{F}$ electrolytic capacitor:</p>
+                    <div class="mono text-xs bg-slate-950 p-2.5 rounded-lg text-emerald-300 border border-slate-800">
+                        V_peak = 15V × √2 ≈ 21.21V<br>
+                        V_dc(unregulated) = 21.21V - 1.4V ≈ 19.8V DC
+                    </div>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 class="font-bold text-white mb-1">2. Active Components & Voltage Regulation (Exp. 6)</h3>
+                    <p class="text-slate-400 mb-2">An LM317 adjustable linear voltage regulator sets the float-charging rail at $13.8\text{V}$ using resistor divider $R_1 = 240\,\Omega$ and $R_2 = 2400\,\Omega$:</p>
+                    <div class="mono text-xs bg-slate-950 p-2.5 rounded-lg text-sky-300 border border-slate-800">
+                        V_reg = 1.25V × (1 + R2 / R1) = 1.25V × (1 + 2400 / 240) = 13.75V ≈ 13.8V
+                    </div>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 class="font-bold text-white mb-1">3. KVL, Superposition & Zero-Delay Diode Switching (Exp. 3 & 4)</h3>
+                    <p class="text-slate-400 mb-2">Two 1N5822 Schottky diodes ($V_f \approx 0.35\text{V}$) form a hardware OR-gate at the output node:</p>
+                    <ul class="list-disc pl-5 space-y-1 text-slate-400">
+                        <li><strong class="text-emerald-300">Mains ON:</strong> Regulator feeds $13.8\text{V} - 0.35\text{V} = 13.45\text{V}$ to the router. Since cathode of $D_2$ is at $13.45\text{V}$ and battery anode is at $12.0\text{V}$, diode $D_2$ is <strong>reverse-biased</strong> (blocking battery discharge) while resistor $R_{\text{chg}}$ trickle-charges the battery.</li>
+                        <li><strong class="text-amber-300">Mains OFF (Blackout):</strong> Regulator voltage drops to $0\text{V}$. Diode $D_2$ immediately becomes <strong>forward-biased</strong>, supplying $12.0\text{V} - 0.35\text{V} = 11.65\text{V}$ to the router in nanoseconds so the Wi-Fi never reboots.</li>
+                    </ul>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                    <h3 class="font-bold text-white mb-1">4. Electrical Protection Equipment (Exp. 1 & 5)</h3>
+                    <p class="text-slate-400">The primary side is guarded by a single-pole Miniature Circuit Breaker (MCB) and a $0.5\text{A}$ glass cartridge fuse, while the DC output features a $2\text{A}$ fast-blow fuse to protect both the battery and router from short-circuits.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. GLOBAL SIMULATION STATE
+        // ==========================================
+        const simState = {
+            mainsOn: true,
+            faultTripped: false,
+            labelsVisible: false,
+            routerUptimeSec: 0
+        };
+
+        // 3D Scene References
+        let scene, camera, renderer, controls;
+        let mcbLeverMesh, fuseWireMesh, dmmScreenTexture, dmmScreenCanvas, dmmCtx;
+        let ledMainsMesh, ledBackupMesh, ledFaultMesh;
+        let routerLedMeshes = [];
+        const particleSystems = [];
+        const labelElements = [];
+        const clickableObjects = [];
+
+        // Component 3D Anchor Coordinates for Floating Labels
+        const componentAnchors = [
+            {
+                id: 'mcb',
+                title: '1. Safety & Protection',
+                subtitle: '6A MCB + 0.5A Glass Fuse',
+                desc: 'Protects 230V AC primary from overloads & short circuits (Exp. 1 & 5).',
+                pos: new THREE.Vector3(-12.5, 4.2, -3.5),
+                color: 'border-rose-500/50'
+            },
+            {
+                id: 'transformer',
+                title: '2. Step-Down Transformer',
+                subtitle: '230V AC → 15V AC (50Hz)',
+                desc: 'Isolates and steps down lethal mains voltage to safe 15V AC rms.',
+                pos: new THREE.Vector3(-6.8, 4.8, -3.5),
+                color: 'border-sky-500/50'
+            },
+            {
+                id: 'rectifier',
+                title: '3. Bridge Rectifier',
+                subtitle: '4x 1N4007 Silicon Diodes',
+                desc: 'Converts bi-directional 15V AC into pulsating DC, dropping ~1.4V (Exp. 8).',
+                pos: new THREE.Vector3(-1.8, 2.5, -1.8),
+                color: 'border-amber-500/50'
+            },
+            {
+                id: 'capacitor',
+                title: '4. Capacitive Filter',
+                subtitle: '2200µF 25V + 0.1µF Ceramic',
+                desc: 'Reservoir capacitor smooths AC ripple into steady ~19.8V DC (Exp. 2).',
+                pos: new THREE.Vector3(0.4, 3.6, -2.5),
+                color: 'border-indigo-500/50'
+            },
+            {
+                id: 'regulator',
+                title: '5. Voltage Regulation',
+                subtitle: 'LM317 IC + Heatsink + R1/R2',
+                desc: 'Regulates smoothed DC to exact 13.8V float voltage for charging & load (Exp. 6).',
+                pos: new THREE.Vector3(2.8, 3.8, -2.8),
+                color: 'border-emerald-500/50'
+            },
+            {
+                id: 'diodes',
+                title: '6. Seamless OR-ing Switch',
+                subtitle: 'D1 & D2 (1N5822) + R_chg',
+                desc: 'Auto-switches between Mains (13.45V) and Battery (11.65V) with 0ms delay.',
+                pos: new THREE.Vector3(4.8, 2.5, -0.5),
+                color: 'border-purple-500/50'
+            },
+            {
+                id: 'battery',
+                title: '7. 12V Lead-Acid Battery',
+                subtitle: '12V 7Ah Sealed Lead-Acid',
+                desc: 'Trickle charges when AC is ON; instantly powers load when AC drops (Exp. 3 & 4).',
+                pos: new THREE.Vector3(1.5, 5.2, 6.2),
+                color: 'border-amber-500/50'
+            },
+            {
+                id: 'router',
+                title: '8. 12V Wi-Fi Router Load',
+                subtitle: 'Continuous 12V DC Consumer',
+                desc: 'Stays online continuously during blackouts without rebooting.',
+                pos: new THREE.Vector3(11.5, 4.5, -1.5),
+                color: 'border-emerald-500/50'
+            },
+            {
+                id: 'dmm',
+                title: '9. Digital Multimeter',
+                subtitle: 'Live Output Voltage Monitor',
+                desc: 'Measures steady-state regulated DC output across the load terminals (Exp. 7).',
+                pos: new THREE.Vector3(10.8, 3.8, 5.8),
+                color: 'border-yellow-500/50'
+            }
+        ];
+
+        // ==========================================
+        // 2. INITIALIZE THREE.JS SCENE
+        // ==========================================
+        window.onload = function () {
+            initScene();
+            buildWorkbench();
+            buildACInputAndProtection();
+            buildTransformer();
+            buildBreadboardAndCircuit();
+            buildLeadAcidBattery();
+            buildWiFiRouter();
+            buildDigitalMultimeter();
+            buildAllWiringAndParticles();
+            createFloatingLabels();
+            updateSimulationVisuals();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onPointerDown);
+
+            animate();
+        };
+
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b1120);
+            scene.fog = new THREE.FogExp2(0x0b1120, 0.012);
+
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 15, 22);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.06;
+            controls.maxPolarAngle = Math.PI / 2 - 0.03;
+            controls.minDistance = 6;
+            controls.maxDistance = 48;
+            controls.target.set(0, 1.2, 0.5);
+
+            // Studio Lab Lighting
+            const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.65);
+            scene.add(ambientLight);
+
+            const mainDirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+            mainDirLight.position.set(14, 26, 18);
+            mainDirLight.castShadow = true;
+            mainDirLight.shadow.mapSize.width = 2048;
+            mainDirLight.shadow.mapSize.height = 2048;
+            mainDirLight.shadow.camera.near = 5;
+            mainDirLight.shadow.camera.far = 60;
+            const d = 22;
+            mainDirLight.shadow.camera.left = -d;
+            mainDirLight.shadow.camera.right = d;
+            mainDirLight.shadow.camera.top = d;
+            mainDirLight.shadow.camera.bottom = -d;
+            scene.add(mainDirLight);
+
+            const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.35);
+            fillLight.position.set(-18, 12, -12);
+            scene.add(fillLight);
+        }
+
+        // ==========================================
+        // 3. BUILD 3D HARDWARE MODELS
+        // ==========================================
+
+        // 3.1 Lab Workbench & ESD Mat
+        function buildWorkbench() {
+            // Wooden Lab Bench Top
+            const tableGeo = new THREE.BoxGeometry(36, 1.2, 22);
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7, metalness: 0.1 });
+            const table = new THREE.Mesh(tableGeo, tableMat);
+            table.position.set(0, -0.6, 0.5);
+            table.receiveShadow = true;
+            scene.add(table);
+
+            // Anti-Static Blue/Grey Engineering Mat
+            const matGeo = new THREE.BoxGeometry(33, 0.08, 19);
+            const matMaterial = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85 });
+            const esdMat = new THREE.Mesh(matGeo, matMaterial);
+            esdMat.position.set(0, 0.04, 0.5);
+            esdMat.receiveShadow = true;
+            scene.add(esdMat);
+
+            // Subtle Grid Helper on the ESD Mat
+            const grid = new THREE.GridHelper(32, 32, 0x334155, 0x1e293b);
+            grid.position.set(0, 0.09, 0.5);
+            scene.add(grid);
+        }
+
+        // 3.2 Stage 1: 230V AC Input Socket, MCB & Glass Fuse Holder
+        function buildACInputAndProtection() {
+            const group = new THREE.Group();
+            group.position.set(-12.5, 0.08, -3.5);
+
+            // Base Mounting Bakelite Plate
+            const base = new THREE.Mesh(
+                new THREE.BoxGeometry(4.8, 0.25, 6.5),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })
+            );
+            base.position.y = 0.125;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            group.add(base);
+
+            // 3-Pin AC Input Plug Block
+            const plugBody = new THREE.Mesh(
+                new THREE.BoxGeometry(1.8, 1.1, 1.6),
+                new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 })
+            );
+            plugBody.position.set(-1.1, 0.8, 2.0);
+            plugBody.castShadow = true;
+            group.add(plugBody);
+
+            // Miniature Circuit Breaker (MCB) Housing
+            const mcbBody = new THREE.Mesh(
+                new THREE.BoxGeometry(1.8, 3.2, 2.6),
+                new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.3 })
+            );
+            mcbBody.position.set(-0.6, 1.8, -0.8);
+            mcbBody.castShadow = true;
+            group.add(mcbBody);
+
+            // Blue Accent Strip on MCB
+            const mcbStripe = new THREE.Mesh(
+                new THREE.BoxGeometry(1.84, 0.4, 2.62),
+                new THREE.MeshStandardMaterial({ color: 0x0284c7 })
+            );
+            mcbStripe.position.set(-0.6, 2.6, -0.8);
+            group.add(mcbStripe);
+
+            // Interactive MCB Toggle Lever
+            const leverGroup = new THREE.Group();
+            leverGroup.position.set(-0.6, 1.8, 0.5);
+            const leverMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.7, 0.35, 0.9),
+                new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 })
+            );
+            leverMesh.position.z = 0.35;
+            leverGroup.add(leverMesh);
+            leverGroup.rotation.x = -0.45; // Up = ON
+            mcbLeverMesh = leverGroup;
+            clickableObjects.push(leverMesh);
+            group.add(leverGroup);
+
+            // Inline Glass Fuse Holder + Transparent Glass Tube
+            const fuseBase = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 0.4, 2.4),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a })
+            );
+            fuseBase.position.set(1.3, 0.45, -0.6);
+            group.add(fuseBase);
+
+            // Metal End Caps of Fuse
+            const capMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.85, roughness: 0.2 });
+            const cap1 = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.4, 16), capMat);
+            cap1.rotation.x = Math.PI / 2;
+            cap1.position.set(1.3, 0.85, -1.4);
+            group.add(cap1);
+
+            const cap2 = cap1.clone();
+            cap2.position.set(1.3, 0.85, 0.2);
+            group.add(cap2);
+
+            // Glass Fuse Cylinder
+            const glassTube = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.24, 0.24, 1.3, 16),
+                new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, roughness: 0.1 })
+            );
+            glassTube.rotation.x = Math.PI / 2;
+            glassTube.position.set(1.3, 0.85, -0.6);
+            group.add(glassTube);
+
+            // Internal Fuse Filament Wire
+            fuseWireMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.04, 1.3, 8),
+                new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+            );
+            fuseWireMesh.rotation.x = Math.PI / 2;
+            fuseWireMesh.position.set(1.3, 0.85, -0.6);
+            group.add(fuseWireMesh);
+
+            scene.add(group);
+        }
+
+        // 3.3 Stage 2: 230V to 15V Step-Down Iron-Core Transformer
+        function buildTransformer() {
+            const group = new THREE.Group();
+            group.position.set(-6.8, 0.08, -3.5);
+
+            // Laminated E-I Iron Core Stack
+            const coreMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.75, roughness: 0.35 });
+            const coreBlock = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.8, 2.8), coreMat);
+            coreBlock.position.y = 2.0;
+            coreBlock.castShadow = true;
+            coreBlock.receiveShadow = true;
+            group.add(coreBlock);
+
+            // Mounting Flange Brackets
+            const flange = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.2, 3.2), coreMat);
+            flange.position.y = 0.1;
+            group.add(flange);
+
+            // Blue Plastic Coil Bobbin
+            const bobbinMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 });
+            const bobbin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.9, 3.6), bobbinMat);
+            bobbin.position.y = 2.0;
+            bobbin.castShadow = true;
+            group.add(bobbin);
+
+            // Copper Winding Bulges (Front & Back of Core)
+            const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8, roughness: 0.25 });
+            const coilFront = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.5, 24), copperMat);
+            coilFront.position.set(0, 2.0, 1.35);
+            group.add(coilFront);
+
+            const coilBack = coilFront.clone();
+            coilBack.position.set(0, 2.0, -1.35);
+            group.add(coilBack);
+
+            scene.add(group);
+        }
+
+        // 3.4 Stage 3–6: Solderless Breadboard / PCB with Rectifier, Filter, LM317 & OR-ing Diodes
+        function buildBreadboardAndCircuit() {
+            const group = new THREE.Group();
+            group.position.set(1.2, 0.08, -1.8);
+
+            // White Solderless Breadboard Base
+            const bbGeo = new THREE.BoxGeometry(11.5, 0.45, 7.2);
+            const bbMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+            const breadboard = new THREE.Mesh(bbGeo, bbMat);
+            breadboard.position.y = 0.225;
+            breadboard.castShadow = true;
+            breadboard.receiveShadow = true;
+            group.add(breadboard);
+
+            // Red & Blue Power Rail Stripes on Breadboard
+            const redLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+            redLine.position.set(0, 0.46, -3.1);
+            group.add(redLine);
+            const blueLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0x3b82f6 }));
+            blueLine.position.set(0, 0.46, 3.1);
+            group.add(blueLine);
+
+            // Center IC Trench
+            const trench = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.08, 0.35), new THREE.MeshStandardMaterial({ color: 0xcbd5e1 }));
+            trench.position.set(0, 0.43, 0);
+            group.add(trench);
+
+            // --- A. 4x 1N4007 Bridge Rectifier Diodes ---
+            const diodePositions = [
+                { x: -3.8, z: -1.1 },
+                { x: -2.7, z: -1.1 },
+                { x: -3.8, z: 1.1 },
+                { x: -2.7, z: 1.1 }
+            ];
+            diodePositions.forEach((pos) => {
+                const d = createDiodeMesh(0.2, 0.85);
+                d.position.set(pos.x, 0.8, pos.z);
+                group.add(d);
+            });
+
+            // --- B. 2200uF 25V Electrolytic Filter Capacitor & 0.1uF Ceramic Cap ---
+            const capGroup = new THREE.Group();
+            capGroup.position.set(-0.9, 0.45, -0.6);
+
+            const capBody = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.72, 0.72, 2.3, 28),
+                new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.3, metalness: 0.2 })
+            );
+            capBody.position.y = 1.25;
+            capBody.castShadow = true;
+            capGroup.add(capBody);
+
+            // Aluminum Top Vent of Electrolytic Cap
+            const capTop = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.68, 0.68, 0.05, 28),
+                new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.2 })
+            );
+            capTop.position.y = 2.41;
+            capGroup.add(capTop);
+
+            // Negative Polarity White Stripe
+            const negStripe = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, 2.31, 0.15),
+                new THREE.MeshBasicMaterial({ color: 0xe2e8f0 })
+            );
+            negStripe.position.set(0.62, 1.25, 0);
+            capGroup.add(negStripe);
+            group.add(capGroup);
+
+            // 0.1uF Ceramic Disc Capacitor (Orange)
+            const ceramicCap = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.28, 0.28, 0.12, 16),
+                new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.5 })
+            );
+            ceramicCap.rotation.x = Math.PI / 2;
+            ceramicCap.position.set(-0.6, 0.85, 1.2);
+            group.add(ceramicCap);
+
+            // --- C. LM317 TO-220 Regulator + Extruded Aluminum Heatsink ---
+            const regGroup = new THREE.Group();
+            regGroup.position.set(1.5, 0.45, -1.0);
+
+            // Silver Aluminum Heatsink with Cooling Fins
+            const sinkMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.85, roughness: 0.25 });
+            const sinkBack = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 0.25), sinkMat);
+            sinkBack.position.set(0, 1.5, -0.35);
+            sinkBack.castShadow = true;
+            regGroup.add(sinkBack);
+
+            for (let i = -0.6; i <= 0.6; i += 0.3) {
+                const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.5, 0.6), sinkMat);
+                fin.position.set(i, 1.5, -0.65);
+                regGroup.add(fin);
+            }
+
+            // TO-220 Black Epoxy Package
+            const icBody = new THREE.Mesh(
+                new THREE.BoxGeometry(1.05, 1.2, 0.35),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 })
+            );
+            icBody.position.set(0, 1.35, -0.05);
+            regGroup.add(icBody);
+
+            // 3 Pins (ADJ, OUT, IN)
+            for (let p = -0.32; p <= 0.32; p += 0.32) {
+                const pin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.85, 0.08), sinkMat);
+                pin.position.set(p, 0.4, -0.05);
+                regGroup.add(pin);
+            }
+            group.add(regGroup);
+
+            // Adjustment Resistors R1 (240 Ohm) & R2 (2.4k Ohm)
+            const r1 = createResistorMesh();
+            r1.position.set(1.4, 0.72, 0.85);
+            group.add(r1);
+
+            const r2 = createResistorMesh();
+            r2.position.set(1.4, 0.72, 1.65);
+            group.add(r2);
+
+            // --- D. Seamless OR-ing Schottky Diodes D1 & D2 + Trickle Charge Resistor ---
+            const d1 = createDiodeMesh(0.24, 1.0); // D1 (Mains Path)
+            d1.position.set(3.5, 0.82, -0.6);
+            group.add(d1);
+
+            const d2 = createDiodeMesh(0.24, 1.0); // D2 (Battery Backup Path)
+            d2.position.set(3.5, 0.82, 1.2);
+            group.add(d2);
+
+            const rChg = createResistorMesh(); // Trickle Charging Current Limiter
+            rChg.position.set(2.9, 0.72, 2.2);
+            group.add(rChg);
+
+            // --- E. Status Indicator LEDs (Green = Mains, Amber = Battery Backup, Red = Fault) ---
+            ledMainsMesh = createLEDMesh(0x10b981);
+            ledMainsMesh.position.set(4.5, 0.45, -2.0);
+            group.add(ledMainsMesh);
+
+            ledBackupMesh = createLEDMesh(0xf59e0b);
+            ledBackupMesh.position.set(4.5, 0.45, -1.0);
+            group.add(ledBackupMesh);
+
+            ledFaultMesh = createLEDMesh(0xef4444);
+            ledFaultMesh.position.set(4.5, 0.45, 0.0);
+            group.add(ledFaultMesh);
+
+            // Green Screw Terminal Block on Right Edge of Breadboard
+            const termBlock = new THREE.Mesh(
+                new THREE.BoxGeometry(0.9, 0.95, 2.2),
+                new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.4 })
+            );
+            termBlock.position.set(5.1, 0.9, 1.5);
+            termBlock.castShadow = true;
+            group.add(termBlock);
+
+            scene.add(group);
+        }
+
+        // Helper: Create 3D Diode with Silver Cathode Band
+        function createDiodeMesh(radius, length) {
+            const dGroup = new THREE.Group();
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(radius, radius, length, 16),
+                new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4 })
+            );
+            body.rotation.z = Math.PI / 2;
+            dGroup.add(body);
+
+            // Silver Cathode Stripe on Right End
+            const band = new THREE.Mesh(
+                new THREE.CylinderGeometry(radius + 0.006, radius + 0.006, length * 0.24, 16),
+                new THREE.MeshBasicMaterial({ color: 0xe2e8f0 })
+            );
+            band.rotation.z = Math.PI / 2;
+            band.position.x = length * 0.28;
+            dGroup.add(band);
+
+            // Axial Wire Leads
+            const leadMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+            const leadHoriz = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, length + 0.7, 8), leadMat);
+            leadHoriz.rotation.z = Math.PI / 2;
+            dGroup.add(leadHoriz);
+
+            return dGroup;
+        }
+
+        // Helper: Create 3D Carbon Film Resistor with Color Bands
+        function createResistorMesh() {
+            const rGroup = new THREE.Group();
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.15, 0.15, 0.75, 14),
+                new THREE.MeshStandardMaterial({ color: 0xd6d3d1, roughness: 0.5 })
+            );
+            body.rotation.z = Math.PI / 2;
+            rGroup.add(body);
+
+            const colors = [0xef4444, 0xfacc15, 0x78350f];
+            colors.forEach((col, idx) => {
+                const band = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.156, 0.156, 0.08, 14),
+                    new THREE.MeshBasicMaterial({ color: col })
+                );
+                band.rotation.z = Math.PI / 2;
+                band.position.x = -0.2 + idx * 0.18;
+                rGroup.add(band);
+            });
+
+            const lead = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.035, 0.035, 1.3, 8),
+                new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 })
+            );
+            lead.rotation.z = Math.PI / 2;
+            rGroup.add(lead);
+
+            return rGroup;
+        }
+
+        // Helper: Create 5mm Dome Indicator LED
+        function createLEDMesh(hexColor) {
+            const ledGroup = new THREE.Group();
+            const domeMat = new THREE.MeshStandardMaterial({
+                color: hexColor,
+                emissive: hexColor,
+                emissiveIntensity: 0.1,
+                transparent: true,
+                opacity: 0.9,
+                roughness: 0.2
+            });
+            const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.45, 16), domeMat);
+            cyl.position.y = 0.6;
+            ledGroup.add(cyl);
+
+            const topSphere = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), domeMat);
+            topSphere.position.y = 0.82;
+            ledGroup.add(topSphere);
+
+            ledGroup.userData.mat = domeMat;
+            return ledGroup;
+        }
+
+        // 3.5 Stage 7: 12V 7Ah Sealed Lead-Acid (SLA) Backup Battery
+        function buildLeadAcidBattery() {
+            const group = new THREE.Group();
+            group.position.set(1.5, 0.08, 6.2);
+
+            // Black ABS Battery Case
+            const caseMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(5.6, 4.2, 3.2),
+                new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 })
+            );
+            caseMesh.position.y = 2.1;
+            caseMesh.castShadow = true;
+            caseMesh.receiveShadow = true;
+            group.add(caseMesh);
+
+            // Top Lid Ridge
+            const lidMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(5.68, 0.45, 3.28),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 })
+            );
+            lidMesh.position.y = 4.15;
+            group.add(lidMesh);
+
+            // Front Specification Plate (Canvas Texture)
+            const labelCanvas = document.createElement('canvas');
+            labelCanvas.width = 512;
+            labelCanvas.height = 256;
+            const ctx = labelCanvas.getContext('2d');
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, 512, 256);
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(12, 12, 488, 232);
+            ctx.fillStyle = '#f59e0b';
+            ctx.font = 'bold 42px Inter, sans-serif';
+            ctx.fillText('12V 7.0Ah SLA', 40, 75);
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 28px Inter, sans-serif';
+            ctx.fillText('VALVE REGULATED LEAD-ACID', 40, 125);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '24px monospace';
+            ctx.fillText('FLOAT CHARGE: 13.5V - 13.8V', 40, 175);
+            ctx.fillText('BACKUP RUNTIME: ~4.5 HOURS', 40, 212);
+
+            const plateTex = new THREE.CanvasTexture(labelCanvas);
+            const plateMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(4.6, 2.3),
+                new THREE.MeshBasicMaterial({ map: plateTex })
+            );
+            plateMesh.position.set(0, 2.0, 1.61);
+            group.add(plateMesh);
+
+            // Red (+) and Black (-) Battery Terminals
+            const redTerm = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.32, 0.32, 0.45, 16),
+                new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 })
+            );
+            redTerm.position.set(-1.8, 4.5, -0.8);
+            group.add(redTerm);
+
+            const blkTerm = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.32, 0.32, 0.45, 16),
+                new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3 })
+            );
+            blkTerm.position.set(1.8, 4.5, -0.8);
+            group.add(blkTerm);
+
+            scene.add(group);
+        }
+
+        // 3.6 Stage 8: 12V Dual-Antenna Wi-Fi Router Load
+        function buildWiFiRouter() {
+            const group = new THREE.Group();
+            group.position.set(11.5, 0.08, -1.8);
+
+            // Sleek Matte Black Router Body
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(5.2, 0.9, 3.8),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.2 })
+            );
+            body.position.y = 0.65;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            group.add(body);
+
+            // Dual High-Gain Antennas
+            const antMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+            [-2.1, 2.1].forEach((xOffset) => {
+                const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.16, 4.2, 12), antMat);
+                ant.position.set(xOffset, 2.7, -1.7);
+                ant.rotation.z = xOffset < 0 ? 0.12 : -0.12;
+                ant.castShadow = true;
+                group.add(ant);
+            });
+
+            // 4 Glowing Front Status LEDs (Power, WAN, 2.4GHz, 5GHz)
+            for (let i = 0; i < 4; i++) {
+                const rLedMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+                const rLed = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12), rLedMat);
+                rLed.position.set(-1.2 + i * 0.8, 0.72, 1.92);
+                routerLedMeshes.push(rLed);
+                group.add(rLed);
+            }
+
+            scene.add(group);
+        }
+
+        // 3.7 Stage 9: Digital Multimeter (DMM) with Live 7-Segment Canvas Display
+        function buildDigitalMultimeter() {
+            const group = new THREE.Group();
+            group.position.set(10.8, 0.08, 5.5);
+            group.rotation.y = -0.25;
+
+            // Yellow Protective Holster Frame
+            const dmmBody = new THREE.Mesh(
+                new THREE.BoxGeometry(3.4, 1.3, 5.2),
+                new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4 })
+            );
+            dmmBody.position.y = 0.95;
+            dmmBody.rotation.x = 0.22; // Tilted slightly toward user
+            dmmBody.castShadow = true;
+            group.add(dmmBody);
+
+            // Dark Grey Inner Faceplate
+            const facePlate = new THREE.Mesh(
+                new THREE.BoxGeometry(3.0, 0.1, 4.7),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 })
+            );
+            facePlate.position.set(0, 1.58, 0.05);
+            facePlate.rotation.x = 0.22;
+            group.add(facePlate);
+
+            // Rotary Selector Dial
+            const dial = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.85, 0.85, 0.28, 24),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+            );
+            dial.position.set(0, 1.72, 0.65);
+            dial.rotation.x = 0.22;
+            group.add(dial);
+
+            // Live LCD Screen Texture
+            dmmScreenCanvas = document.createElement('canvas');
+            dmmScreenCanvas.width = 512;
+            dmmScreenCanvas.height = 256;
+            dmmCtx = dmmScreenCanvas.getContext('2d');
+            dmmScreenTexture = new THREE.CanvasTexture(dmmScreenCanvas);
+
+            const lcdScreen = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.5, 1.25),
+                new THREE.MeshBasicMaterial({ map: dmmScreenTexture })
+            );
+            lcdScreen.position.set(0, 1.88, -1.15);
+            lcdScreen.rotation.x = -Math.PI / 2 + 0.22;
+            group.add(lcdScreen);
+
+            scene.add(group);
+        }
+
+        // Update DMM LCD Canvas Screen
+        function updateDMMScreen(voltageStr, modeLabel) {
+            if (!dmmCtx) return;
+            dmmCtx.fillStyle = '#84a98c'; // Classic LCD greenish-grey background
+            dmmCtx.fillRect(0, 0, 512, 256);
+
+            // Inner LCD Bezel
+            dmmCtx.strokeStyle = '#2f3e46';
+            dmmCtx.lineWidth = 10;
+            dmmCtx.strokeRect(10, 10, 492, 236);
+
+            // Mode Indicator
+            dmmCtx.fillStyle = '#1b263b';
+            dmmCtx.font = 'bold 30px JetBrains Mono, monospace';
+            dmmCtx.fillText('DC V   AUTO', 32, 54);
+            dmmCtx.fillText(modeLabel, 280, 54);
+
+            // Large Digital Voltage Readout
+            dmmCtx.font = 'bold 112px JetBrains Mono, monospace';
+            dmmCtx.fillText(voltageStr, 36, 195);
+
+            dmmScreenTexture.needsUpdate = true;
+        }
+
+        // ==========================================
+        // 4. WIRES & ANIMATED CURRENT PARTICLES
+        // ==========================================
+        function buildAllWiringAndParticles() {
+            // 1. 230V AC Input to Transformer Primary (Sky Blue particles)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(-11.2, 0.9, -4.1),
+                    new THREE.Vector3(-9.5, 1.4, -4.1),
+                    new THREE.Vector3(-8.0, 1.8, -4.1)
+                ],
+                0xef4444,
+                0x38bdf8,
+                'ac_input'
+            );
+
+            // 2. Transformer 15V Secondary to Bridge Rectifier (Sky Blue particles)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(-5.6, 1.8, -3.2),
+                    new THREE.Vector3(-4.2, 1.8, -2.8),
+                    new THREE.Vector3(-2.6, 0.9, -2.8)
+                ],
+                0x0284c7,
+                0x38bdf8,
+                'ac_input'
+            );
+
+            // 3. Bridge Rectifier -> Filter Cap -> LM317 -> D1 -> Output Node (Emerald Green particles)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(-1.8, 0.85, -1.8),
+                    new THREE.Vector3(0.3, 0.85, -2.4),
+                    new THREE.Vector3(2.7, 0.85, -2.4),
+                    new THREE.Vector3(4.7, 0.85, -2.4),
+                    new THREE.Vector3(6.2, 0.9, -0.3)
+                ],
+                0x10b981,
+                0x34d399,
+                'mains_dc'
+            );
+
+            // 4. Trickle Charge Path: Regulator Out -> R_chg -> 12V Battery (+) (Emerald Green particles)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(4.1, 0.8, 0.4),
+                    new THREE.Vector3(2.2, 1.2, 2.5),
+                    new THREE.Vector3(-0.3, 4.6, 5.4)
+                ],
+                0xf59e0b,
+                0x34d399,
+                'trickle_charge'
+            );
+
+            // 5. Battery Backup Path: 12V Battery (+) -> Diode D2 -> Output Node (Amber particles when Mains OFF)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(-0.3, 4.6, 5.4),
+                    new THREE.Vector3(3.8, 2.2, 3.2),
+                    new THREE.Vector3(4.7, 0.85, -0.6),
+                    new THREE.Vector3(6.2, 0.9, -0.3)
+                ],
+                0xd97706,
+                0xfbbf24,
+                'battery_backup'
+            );
+
+            // 6. Output Terminal Block -> 12V Wi-Fi Router Load (Always Active unless Fault Tripped)
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(6.3, 0.9, -0.3),
+                    new THREE.Vector3(8.5, 1.1, -1.5),
+                    new THREE.Vector3(9.4, 0.7, -1.8)
+                ],
+                0xef4444,
+                0x34d399,
+                'router_load'
+            );
+
+            // 7. Output Terminal Block -> Digital Multimeter Probes
+            createWireWithCurrent(
+                [
+                    new THREE.Vector3(6.3, 0.9, -0.1),
+                    new THREE.Vector3(8.2, 0.6, 3.2),
+                    new THREE.Vector3(10.0, 1.2, 5.8)
+                ],
+                0xdc2626,
+                0xfacc15,
+                'router_load'
+            );
+        }
+
+        function createWireWithCurrent(points, wireColorHex, particleColorHex, pathType) {
+            const curve = new THREE.CatmullRomCurve3(points);
+            const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.075, 10, false);
+            const tubeMat = new THREE.MeshStandardMaterial({ color: wireColorHex, roughness: 0.4 });
+            const wireMesh = new THREE.Mesh(tubeGeo, tubeMat);
+            wireMesh.castShadow = true;
+            scene.add(wireMesh);
+
+            // Create Animated Glowing Electrons/Current Spheres along the Curve
+            const spheres = [];
+            const numSpheres = 6;
+            const sphereGeo = new THREE.SphereGeometry(0.14, 10, 10);
+            const sphereMat = new THREE.MeshBasicMaterial({ color: particleColorHex });
+
+            for (let i = 0; i < numSpheres; i++) {
+                const sp = new THREE.Mesh(sphereGeo, sphereMat);
+                scene.add(sp);
+                spheres.push({ mesh: sp, offset: i / numSpheres });
+            }
+
+            particleSystems.push({
+                curve,
+                spheres,
+                pathType,
+                mat: sphereMat
+            });
+        }
+
+        // ==========================================
+        // 5. FLOATING 3D HTML LABELS
+        // ==========================================
+        function createFloatingLabels() {
+            const container = document.getElementById('labels-container');
+            container.innerHTML = '';
+
+            componentAnchors.forEach((item) => {
+                const el = document.createElement('div');
+                el.className = `label-3d glass-panel px-2 py-1 rounded-lg border ${item.color} shadow-md cursor-pointer`;
+                el.innerHTML = `
+                    <div class="text-[10px] font-bold text-white whitespace-nowrap">${item.title}</div>
+                    <div class="text-[9px] font-medium text-sky-300 mono whitespace-nowrap">${item.subtitle}</div>
+                `;
+                container.appendChild(el);
+                labelElements.push({ el, pos: item.pos });
+            });
+        }
+
+        function updateFloatingLabelsPosition() {
+            if (!simState.labelsVisible) return;
+            const halfW = window.innerWidth / 2;
+            const halfH = window.innerHeight / 2;
+
+            labelElements.forEach(({ el, pos }) => {
+                const projected = pos.clone().project(camera);
+                if (projected.z > 1) {
+                    el.style.opacity = '0';
+                    return;
+                }
+                const x = projected.x * halfW + halfW;
+                const y = -(projected.y * halfH) + halfH;
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.style.opacity = '1';
+            });
+        }
+
+        // ==========================================
+        // 6. INTERACTIVE SIMULATION LOGIC
+        // ==========================================
+        function toggleMainsPower() {
+            if (simState.faultTripped) return;
+            simState.mainsOn = !simState.mainsOn;
+            updateSimulationVisuals();
+        }
+
+        function triggerFault() {
+            simState.faultTripped = true;
+            simState.mainsOn = false;
+            updateSimulationVisuals();
+        }
+
+        function resetFault() {
+            simState.faultTripped = false;
+            simState.mainsOn = true;
+            updateSimulationVisuals();
+        }
+
+        function updateSimulationVisuals() {
+            const badge = document.getElementById('mode-badge');
+            const dot = document.getElementById('header-status-dot');
+            const mcbText = document.getElementById('mcb-state-text');
+            const fuseText = document.getElementById('fuse-state-text');
+            const btnMains = document.getElementById('btn-mains');
+            const btnMainsLabel = document.getElementById('btn-mains-label');
+            const btnFault = document.getElementById('btn-fault');
+            const btnReset = document.getElementById('btn-reset');
+
+            // Telemetry DOM Elements
+            const telAc = document.getElementById('tel-ac');
+            const telRect = document.getElementById('tel-rect');
+            const telReg = document.getElementById('tel-reg');
+            const telOut = document.getElementById('tel-out');
+            const telBatt = document.getElementById('tel-batt');
+            const telDiode = document.getElementById('tel-diode');
+            const telRouter = document.getElementById('tel-router');
+
+            if (simState.faultTripped) {
+                // STATE 3: SHORT CIRCUIT / OVERLOAD FAULT TRIPPED
+                mcbLeverMesh.rotation.x = 0.45; // MCB Lever Down
+                fuseWireMesh.visible = false;
+
+                ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
+                ledBackupMesh.userData.mat.emissiveIntensity = 0.05;
+                ledFaultMesh.userData.mat.emissiveIntensity = 1.6;
+                routerLedMeshes.forEach((m) => m.material.color.setHex(0x334155));
+
+                badge.textContent = 'FAULT: MCB & FUSE TRIPPED';
+                badge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40';
+                dot.className = 'w-3 h-3 rounded-full bg-rose-500 animate-ping';
+
+                mcbText.textContent = 'TRIPPED (OPEN)';
+                mcbText.className = 'text-xs font-bold text-rose-400 mono';
+                fuseText.textContent = 'BLOWN / ISOLATED';
+                fuseText.className = 'text-xs font-bold text-rose-400 mono';
+
+                btnFault.classList.add('hidden');
+                btnReset.classList.remove('hidden');
+
+                telAc.textContent = '0.0 V AC';
+                telRect.textContent = '0.0 V DC';
+                telReg.textContent = '0.00 V';
+                telOut.textContent = '0.00 V';
+                telBatt.textContent = 'Isolated by 2A Fuse';
+                telBatt.className = 'font-semibold text-rose-400 mono';
+                telDiode.textContent = 'All Paths Open';
+                telRouter.textContent = 'PROTECTED (OFF)';
+                telRouter.className = 'font-semibold text-rose-400 mono';
+
+                updateDMMScreen('00.00 V', 'FAULT');
+            } else if (simState.mainsOn) {
+                // STATE 1: 230V AC MAINS ON (NORMAL OPERATION + BATTERY FLOAT CHARGING)
+                mcbLeverMesh.rotation.x = -0.45; // MCB Lever Up
+                fuseWireMesh.visible = true;
+
+                ledMainsMesh.userData.mat.emissiveIntensity = 1.5;
+                ledBackupMesh.userData.mat.emissiveIntensity = 0.08;
+                ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
+                routerLedMeshes.forEach((m) => m.material.color.setHex(0x10b981));
+
+                badge.textContent = 'MAINS AC ACTIVE';
+                badge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                dot.className = 'w-3 h-3 rounded-full bg-emerald-400 animate-pulse';
+
+                mcbText.textContent = 'ON (CLOSED)';
+                mcbText.className = 'text-xs font-bold text-emerald-400 mono';
+                fuseText.textContent = 'INTACT (OK)';
+                fuseText.className = 'text-xs font-bold text-emerald-400 mono';
+
+                btnMains.className = 'w-full py-2 px-3 rounded-lg font-semibold text-xs text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center justify-center gap-2 shadow-lg';
+                btnMainsLabel.textContent = 'Cut 230V Mains Power (Simulate Blackout)';
+                btnFault.classList.remove('hidden');
+                btnReset.classList.add('hidden');
+
+                telAc.textContent = '15.0 V AC';
+                telRect.textContent = '19.8 V DC';
+                telReg.textContent = '13.80 V';
+                telOut.textContent = '13.45 V';
+                telBatt.textContent = 'Float Charging (+0.28A)';
+                telBatt.className = 'font-semibold text-emerald-400 mono';
+                telDiode.textContent = 'D1 Forward / D2 Blocked';
+                telRouter.textContent = 'ONLINE (0ms drop)';
+                telRouter.className = 'font-semibold text-emerald-400 mono';
+
+                updateDMMScreen('13.45 V', 'MAINS');
+            } else {
+                // STATE 2: MAINS BLACKOUT -> SEAMLESS 12V BATTERY BACKUP
+                mcbLeverMesh.rotation.x = 0.45; // MCB Lever Down
+                fuseWireMesh.visible = true;
+
+                ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
+                ledBackupMesh.userData.mat.emissiveIntensity = 1.6;
+                ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
+                routerLedMeshes.forEach((m) => m.material.color.setHex(0x10b981));
+
+                badge.textContent = 'BATTERY BACKUP MODE';
+                badge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40';
+                dot.className = 'w-3 h-3 rounded-full bg-amber-400 animate-pulse';
+
+                mcbText.textContent = 'OFF (BLACKOUT)';
+                mcbText.className = 'text-xs font-bold text-amber-400 mono';
+                fuseText.textContent = 'INTACT (OK)';
+                fuseText.className = 'text-xs font-bold text-emerald-400 mono';
+
+                btnMains.className = 'w-full py-2 px-3 rounded-lg font-semibold text-xs text-slate-950 bg-amber-400 hover:bg-amber-300 transition flex items-center justify-center gap-2 shadow-lg';
+                btnMainsLabel.textContent = 'Restore 230V AC Mains Power';
+                btnFault.classList.remove('hidden');
+                btnReset.classList.add('hidden');
+
+                telAc.textContent = '0.0 V AC';
+                telRect.textContent = '0.0 V DC';
+                telReg.textContent = '0.00 V';
+                telOut.textContent = '11.65 V';
+                telBatt.textContent = 'Discharging (-0.85A)';
+                telBatt.className = 'font-semibold text-amber-400 mono';
+                telDiode.textContent = 'D2 Forward / D1 Blocked';
+                telRouter.textContent = 'ONLINE (Uninterrupted)';
+                telRouter.className = 'font-semibold text-emerald-400 mono';
+
+                updateDMMScreen('11.65 V', 'BACKUP');
+            }
+        }
+
+        // Camera Presets
+        function setCameraView(preset) {
+            if (preset === 'overview') {
+                camera.position.set(0, 15, 22);
+                controls.target.set(0, 1.2, 0.5);
+            } else if (preset === 'pcb') {
+                camera.position.set(1.5, 8.5, 6.8);
+                controls.target.set(1.5, 1.2, -1.5);
+            } else if (preset === 'protection') {
+                camera.position.set(-9.5, 8.0, 4.5);
+                controls.target.set(-9.5, 1.5, -3.5);
+            }
+            controls.update();
+        }
+
+        function toggleLabels() {
+            simState.labelsVisible = !simState.labelsVisible;
+            const btn = document.getElementById('btn-labels');
+            const container = document.getElementById('labels-container');
+            btn.textContent = simState.labelsVisible ? '3D Pins: ON' : '3D Pins: OFF';
+            btn.className = simState.labelsVisible
+                ? 'px-2.5 py-1 text-[11px] font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition border border-indigo-400/30'
+                : 'px-2.5 py-1 text-[11px] font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition border border-slate-700';
+            container.style.display = simState.labelsVisible ? 'block' : 'none';
+        }
+
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            modal.classList.toggle('hidden');
+        }
+
+        // Raycaster to allow clicking the 3D MCB Switch directly
+        function onPointerDown(event) {
+            if (event.target.tagName !== 'CANVAS') return;
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(clickableObjects, true);
+            if (intersects.length > 0) {
+                toggleMainsPower();
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==========================================
+        // 7. ANIMATION LOOP
+        // ==========================================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Animate Current Particles based on active power paths
+            particleSystems.forEach((sys) => {
+                let active = false;
+                if (!simState.faultTripped) {
+                    if (sys.pathType === 'ac_input' && simState.mainsOn) active = true;
+                    if (sys.pathType === 'mains_dc' && simState.mainsOn) active = true;
+                    if (sys.pathType === 'trickle_charge' && simState.mainsOn) active = true;
+                    if (sys.pathType === 'battery_backup' && !simState.mainsOn) active = true;
+                    if (sys.pathType === 'router_load') {
+                        active = true;
+                        // Change load particle color to match Mains (Green) or Battery (Amber)
+                        sys.mat.color.setHex(simState.mainsOn ? 0x34d399 : 0xfbbf24);
+                    }
+                }
+
+                sys.spheres.forEach((sp) => {
+                    sp.mesh.visible = active;
+                    if (active) {
+                        sp.offset = (sp.offset + 0.008) % 1;
+                        const pt = sys.curve.getPointAt(sp.offset);
+                        sp.mesh.position.copy(pt);
+                    }
+                });
+            });
+
+            updateFloatingLabelsPosition();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
+```
