@@ -6,8 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DYP-ENTC-FY-08 // 12V DC Uninterruptible Power Supply Simulator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Primary & Fallback CDN Loader for Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+            onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';document.head.appendChild(s);"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"
+            onerror="window.__orbitLoadFailed=true;"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -157,9 +160,32 @@
         ::-webkit-scrollbar-thumb {
             background: #B8B3A6;
         }
+
+        /* Fast Top Boot Progress Bar */
+        #boot-progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            width: 100%;
+            background-color: #D8D4C8;
+            z-index: 100;
+            transition: opacity 0.25s ease;
+        }
+        #boot-progress-fill {
+            height: 100%;
+            width: 45%;
+            background-color: var(--instrument-green);
+            transition: width 0.35s ease;
+        }
     </style>
 </head>
 <body class="w-screen h-screen flex flex-col justify-between overflow-hidden">
+
+    <!-- Top Loading Progress Indicator (Auto-dismisses within 1.5s) -->
+    <div id="boot-progress-bar">
+        <div id="boot-progress-fill"></div>
+    </div>
 
     <!-- ===================================================================== -->
     <!-- ULTRA-SLIM 40PX ARCHITECTURAL HEADER STRIP                            -->
@@ -230,6 +256,79 @@
     <main class="relative flex-1 w-full overflow-hidden bg-[#EAE6DF]">
         <!-- Three.js Canvas Mount -->
         <div id="canvas-container" class="w-full h-full"></div>
+
+        <!-- 2D Interactive SVG Schematic Fallback (Shown automatically if WebGL or CDN fails) -->
+        <div id="svg-fallback-container" class="hidden absolute inset-0 w-full h-full bg-[#EAE6DF] flex items-center justify-center p-4 overflow-auto z-10">
+            <div class="surface-cell border border-[#141413] p-4 max-w-4xl w-full shadow-sm">
+                <div class="flex items-center justify-between border-b border-[#D8D4C8] pb-2 mb-3">
+                    <span class="type-size-3 font-semibold text-[#141413]">2D INTERACTIVE HARDWARE SCHEMATIC // FALLBACK ENGINE ACTIVE</span>
+                    <span class="type-size-3 text-[#1D5B4C]">TAP ANY BLOCK TO INSPECT</span>
+                </div>
+                <svg viewBox="0 0 900 280" class="w-full h-auto select-none">
+                    <!-- Connecting Bus Lines -->
+                    <line x1="120" y1="110" x2="780" y2="110" stroke="#1D5B4C" stroke-width="4"/>
+                    <line x1="480" y1="110" x2="480" y2="215" stroke="#C84B31" stroke-width="3" stroke-dasharray="6,4"/>
+                    <line x1="480" y1="215" x2="585" y2="215" stroke="#C84B31" stroke-width="4"/>
+                    <line x1="585" y1="215" x2="585" y2="110" stroke="#C84B31" stroke-width="4"/>
+
+                    <!-- Stage 1: MCB + Fuse -->
+                    <g onclick="selectComponent('mcb')" class="cursor-pointer">
+                        <rect x="20" y="65" width="105" height="90" fill="#F4F1EA" stroke="#141413" stroke-width="2"/>
+                        <text x="30" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#C84B31">01 // F1+CB1</text>
+                        <text x="30" y="112" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#141413">230V AC MCB</text>
+                        <text x="30" y="132" font-family="IBM Plex Mono" font-size="10" fill="#575653">0.5A Fuse + 6A</text>
+                    </g>
+
+                    <!-- Stage 2: Transformer -->
+                    <g onclick="selectComponent('transformer')" class="cursor-pointer">
+                        <rect x="145" y="65" width="105" height="90" fill="#FFFFFF" stroke="#141413" stroke-width="2"/>
+                        <text x="155" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#1D5B4C">02 // T1</text>
+                        <text x="155" y="112" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#141413">Transformer</text>
+                        <text x="155" y="132" font-family="IBM Plex Mono" font-size="10" fill="#575653">230V -> 15V 2A</text>
+                    </g>
+
+                    <!-- Stage 3: Bridge Rectifier -->
+                    <g onclick="selectComponent('rectifier')" class="cursor-pointer">
+                        <rect x="270" y="65" width="105" height="90" fill="#FFFFFF" stroke="#141413" stroke-width="2"/>
+                        <text x="280" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#1D5B4C">03 // BR1</text>
+                        <text x="280" y="112" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#141413">4x 1N4007</text>
+                        <text x="280" y="132" font-family="IBM Plex Mono" font-size="10" fill="#575653">Bridge V_F=1.4V</text>
+                    </g>
+
+                    <!-- Stage 4 & 5: Capacitor + LM317 -->
+                    <g onclick="selectComponent('regulator')" class="cursor-pointer">
+                        <rect x="395" y="65" width="125" height="90" fill="#FFFFFF" stroke="#141413" stroke-width="2"/>
+                        <text x="405" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#1D5B4C">04-05 // C1+U1</text>
+                        <text x="405" y="112" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#141413">2200uF + LM317</text>
+                        <text x="405" y="132" font-family="IBM Plex Mono" font-size="10" fill="#575653">V_REG = 13.75V</text>
+                    </g>
+
+                    <!-- Stage 6: OR-ing Diodes -->
+                    <g onclick="selectComponent('diodes')" class="cursor-pointer">
+                        <rect x="540" y="65" width="105" height="90" fill="#F4F1EA" stroke="#141413" stroke-width="2"/>
+                        <text x="550" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#C84B31">06 // D1+D2</text>
+                        <text x="550" y="112" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#141413">1N5822 OR-Gate</text>
+                        <text x="550" y="132" font-family="IBM Plex Mono" font-size="10" fill="#575653">0ms Switchover</text>
+                    </g>
+
+                    <!-- Stage 7: 12V SLA Battery -->
+                    <g onclick="selectComponent('battery')" class="cursor-pointer">
+                        <rect x="395" y="175" width="145" height="80" fill="#141413" stroke="#C84B31" stroke-width="2"/>
+                        <text x="408" y="200" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#C84B31">07 // BAT1 SLA</text>
+                        <text x="408" y="222" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#FFFFFF">12V 7.0Ah Backup</text>
+                        <text x="408" y="242" font-family="IBM Plex Mono" font-size="10" fill="#D8D4C8">R_th = 0.08 Ohm</text>
+                    </g>
+
+                    <!-- Stage 8 & 9: Router + DMM -->
+                    <g onclick="selectComponent('router')" class="cursor-pointer">
+                        <rect x="665" y="65" width="210" height="90" fill="#FFFFFF" stroke="#141413" stroke-width="2"/>
+                        <text x="678" y="90" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#1D5B4C">08-09 // LOAD1 + DMM</text>
+                        <text x="678" y="112" font-family="Space Grotesk" font-size="14" font-weight="700" fill="#141413">12V Wi-Fi Router (1.0A)</text>
+                        <text x="678" y="134" font-family="IBM Plex Mono" font-size="12" font-weight="600" fill="#1D5B4C" id="svg-dmm-readout">DMM BUS: 13.45 V DC</text>
+                    </g>
+                </svg>
+            </div>
+        </div>
 
         <!-- Floating 3D Index Callouts -->
         <div id="labels-container" class="absolute inset-0 pointer-events-none overflow-hidden" style="display: none;"></div>
@@ -528,7 +627,8 @@
             drawerOpen: false,
             consoleCollapsed: false,
             currentPreset: 'overview',
-            selectedComponentId: 'regulator'
+            selectedComponentId: 'regulator',
+            webglActive: false
         };
 
         // 3D Scene References
@@ -550,7 +650,7 @@
                 subtitle: '230V AC 50Hz Primary Protection',
                 desc: 'Provides thermal-magnetic overload and short-circuit isolation on the 230V AC primary line prior to transformer energization.',
                 syllabus: 'SYLLABUS: EXP. 1 & 5 (FUSES, MCB, PROTECTION)',
-                pos: new THREE.Vector3(-12.5, 4.2, -3.5)
+                pos: { x: -12.2, y: 4.2, z: -3.2 }
             },
             {
                 id: 'transformer',
@@ -559,7 +659,7 @@
                 subtitle: '15.0V AC RMS Secondary',
                 desc: 'Galvanically isolates lethal 230V 50Hz mains and steps down voltage by a 15.3:1 turns ratio to 15.0V RMS (21.21V Peak).',
                 syllabus: 'SYLLABUS: EXP. 2 & 7 (AC SOURCES & TRANSFORMERS)',
-                pos: new THREE.Vector3(-6.8, 4.8, -3.5)
+                pos: { x: -6.8, y: 4.8, z: -3.2 }
             },
             {
                 id: 'rectifier',
@@ -568,7 +668,7 @@
                 subtitle: 'V_F = 1.40V Total Drop',
                 desc: 'Converts bidirectional 15V AC sinusoidal waveform into unidirectional full-wave pulsating DC. Conducts two diodes per half-cycle.',
                 syllabus: 'SYLLABUS: EXP. 8 (STUDY OF RECTIFIER CIRCUIT)',
-                pos: new THREE.Vector3(-1.8, 2.5, -1.8)
+                pos: { x: -1.8, y: 2.5, z: -1.8 }
             },
             {
                 id: 'capacitor',
@@ -577,7 +677,7 @@
                 subtitle: 'V_RECT = 19.81V DC Bus',
                 desc: 'Stores charge at 21.21V - 1.40V = 19.81V peak and discharges across the 10ms half-cycle interval to suppress 100Hz ripple voltage.',
                 syllabus: 'SYLLABUS: EXP. 2 (STEADY-STATE RC FILTER RESPONSE)',
-                pos: new THREE.Vector3(0.4, 3.6, -2.5)
+                pos: { x: 0.4, y: 3.6, z: -2.5 }
             },
             {
                 id: 'regulator',
@@ -586,7 +686,7 @@
                 subtitle: 'V_OUT = 1.25V * (1 + 2400/240) = 13.75V',
                 desc: 'Maintains a regulated 13.75V DC float rail using R1=240Ω and R2=2.4kΩ. Dissipates 6.06W thermal load via multi-fin aluminum heatsink.',
                 syllabus: 'SYLLABUS: EXP. 6 (ACTIVE SEMICONDUCTOR ICS)',
-                pos: new THREE.Vector3(2.8, 3.8, -2.8)
+                pos: { x: 2.8, y: 3.8, z: -2.8 }
             },
             {
                 id: 'diodes',
@@ -595,7 +695,7 @@
                 subtitle: 'V_F = 0.30V–0.45V // 0ms Switchover',
                 desc: 'Passive hardware OR-gate. D1 conducts 13.45V when Mains is active, reverse-biasing D2. On blackout, D2 forward-biases instantaneously.',
                 syllabus: 'SYLLABUS: EXP. 3 & 6 (SUPERPOSITION & DIODE GATING)',
-                pos: new THREE.Vector3(4.8, 2.5, -0.5)
+                pos: { x: 4.8, y: 2.5, z: -0.5 }
             },
             {
                 id: 'battery',
@@ -604,7 +704,7 @@
                 subtitle: 'R_th = 0.08Ω // Trickle Charge 0.28A',
                 desc: 'Modeled as a Thevenin equivalent DC network (V_th = 12.10V, R_th = 0.08Ω). Float-charged via current-limiting resistor R_chg.',
                 syllabus: 'SYLLABUS: EXP. 3 & 4 (KVL & THEVENIN EQUIVALENT)',
-                pos: new THREE.Vector3(1.5, 5.2, 5.2)
+                pos: { x: 1.5, y: 5.2, z: 5.2 }
             },
             {
                 id: 'router',
@@ -613,7 +713,7 @@
                 subtitle: 'P_LOAD = 12.0W Continuous',
                 desc: 'Constant 1.0A DC load. Experiences zero reboot or packet drop during AC-to-Battery transition due to Schottky OR-ing architecture.',
                 syllabus: 'SYLLABUS: EXP. 4 (DC NETWORK LOAD ANALYSIS)',
-                pos: new THREE.Vector3(11.2, 4.5, -1.5)
+                pos: { x: 11.2, y: 4.5, z: -1.5 }
             },
             {
                 id: 'dmm',
@@ -622,56 +722,120 @@
                 subtitle: 'High-Impedance DC Voltage Probe',
                 desc: 'Connected in parallel across the output screw terminals to verify steady-state load regulation under Mains (13.45V) and SLA (11.65V).',
                 syllabus: 'SYLLABUS: EXP. 7 (ELECTRONIC MEASURING DEVICES)',
-                pos: new THREE.Vector3(10.5, 3.8, 4.8)
+                pos: { x: 10.5, y: 3.8, z: 4.8 }
             }
         ];
 
         // ==========================================
-        // 2. INITIALIZE THREE.JS SCENE (SCALED ROOT)
+        // 2. FAULT-TOLERANT BOOTLOADER & SCENE INIT
         // ==========================================
-        window.onload = function () {
-            initScene();
-            buildWorkbench();
-            buildACInputAndProtection();
-            buildTransformer();
-            buildBreadboardAndCircuit();
-            buildLeadAcidBattery();
-            buildWiFiRouter();
-            buildDigitalMultimeter();
-            buildAllWiringAndParticles();
-            createFloatingLabels();
-            updateSimulationVisuals();
+        function dismissBootBar() {
+            const bar = document.getElementById('boot-progress-bar');
+            const fill = document.getElementById('boot-progress-fill');
+            if (fill) fill.style.width = '100%';
+            setTimeout(() => {
+                if (bar) bar.style.opacity = '0';
+                setTimeout(() => {
+                    if (bar) bar.style.display = 'none';
+                }, 260);
+            }, 180);
+        }
+
+        function activate2DFallback() {
+            simState.webglActive = false;
+            const svgFallback = document.getElementById('svg-fallback-container');
+            if (svgFallback) svgFallback.classList.remove('hidden');
+            dismissBootBar();
+        }
+
+        window.addEventListener('DOMContentLoaded', function () {
+            // Ensure UI & Inspector always work immediately even before 3D finishes
             selectComponent('regulator');
-            setCameraView('overview');
+            updateSimulationVisuals();
 
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('pointerdown', onPointerDown);
+            // Hard 1.2s failsafe timer so the progress bar never hangs
+            setTimeout(dismissBootBar, 1200);
 
-            animate();
-        };
+            // Attempt 3D initialization with automatic retry if fallback CDN is still loading
+            let attempts = 0;
+            function tryBoot3D() {
+                attempts++;
+                if (typeof window.THREE !== 'undefined') {
+                    try {
+                        initScene();
+                        buildWorkbench();
+                        buildACInputAndProtection();
+                        buildTransformer();
+                        buildBreadboardAndCircuit();
+                        buildLeadAcidBattery();
+                        buildWiFiRouter();
+                        buildDigitalMultimeter();
+                        buildAllWiringAndParticles();
+                        createFloatingLabels();
+                        simState.webglActive = true;
+                        updateSimulationVisuals();
+                        setCameraView('overview');
+
+                        window.addEventListener('resize', onWindowResize);
+                        window.addEventListener('pointerdown', onPointerDown);
+                        dismissBootBar();
+                        animate();
+                    } catch (err) {
+                        console.warn('WebGL initialization failed, switching to 2D Schematic Fallback:', err);
+                        activate2DFallback();
+                    }
+                } else if (attempts < 8) {
+                    setTimeout(tryBoot3D, 180);
+                } else {
+                    activate2DFallback();
+                }
+            }
+            tryBoot3D();
+        });
 
         function initScene() {
             const container = document.getElementById('canvas-container');
+            const safeW = container.clientWidth || window.innerWidth || 800;
+            const safeH = container.clientHeight || (window.innerHeight - 180) || 500;
+
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0xEAE6DF);
             scene.fog = new THREE.FogExp2(0xEAE6DF, 0.005);
 
             // Narrower 35-deg telephoto FOV makes the 3D hardware appear much larger & less distorted
-            camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 250);
+            camera = new THREE.PerspectiveCamera(35, safeW / Math.max(safeH, 1), 0.1, 250);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                powerPreference: 'default',
+                failIfMajorPerformanceCaveat: false
+            });
+            renderer.setSize(safeW, safeH);
+            // Cap pixelRatio at 1.5 to prevent mobile GPU memory exhaustion & freeze
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+            // Disable expensive real-time shadow maps on mobile for instant zero-lag startup
+            renderer.shadowMap.enabled = false;
+            container.innerHTML = '';
             container.appendChild(renderer.domElement);
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.06;
-            controls.maxPolarAngle = Math.PI / 2 - 0.02;
-            controls.minDistance = 4.5;
-            controls.maxDistance = 52;
+            if (typeof THREE.OrbitControls !== 'undefined') {
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.07;
+                controls.maxPolarAngle = Math.PI / 2 - 0.02;
+                controls.minDistance = 4.5;
+                controls.maxDistance = 52;
+            } else {
+                // Lightweight fallback camera controller if OrbitControls script failed
+                controls = {
+                    target: new THREE.Vector3(0, 1.6, 0.2),
+                    minDistance: 4.5,
+                    maxDistance: 52,
+                    update: function () {
+                        camera.lookAt(this.target);
+                    }
+                };
+            }
 
             // Root scaled group so the entire 3D hardware assembly is 1.42x larger
             hardwareRoot = new THREE.Group();
@@ -679,22 +843,11 @@
             scene.add(hardwareRoot);
 
             // Bright Daytime Engineering Lab Lighting
-            const ambientLight = new THREE.AmbientLight(0xFFFDF9, 0.84);
+            const ambientLight = new THREE.AmbientLight(0xFFFDF9, 0.88);
             scene.add(ambientLight);
 
-            const mainDirLight = new THREE.DirectionalLight(0xFFFFFF, 0.92);
+            const mainDirLight = new THREE.DirectionalLight(0xFFFFFF, 0.85);
             mainDirLight.position.set(20, 36, 24);
-            mainDirLight.castShadow = true;
-            mainDirLight.shadow.mapSize.width = 2048;
-            mainDirLight.shadow.mapSize.height = 2048;
-            mainDirLight.shadow.camera.near = 5;
-            mainDirLight.shadow.camera.far = 90;
-            const d = 30;
-            mainDirLight.shadow.camera.left = -d;
-            mainDirLight.shadow.camera.right = d;
-            mainDirLight.shadow.camera.top = d;
-            mainDirLight.shadow.camera.bottom = -d;
-            mainDirLight.shadow.bias = -0.0005;
             scene.add(mainDirLight);
 
             const fillLight = new THREE.DirectionalLight(0xF4F1EA, 0.45);
@@ -722,14 +875,12 @@
             const tableMat = new THREE.MeshStandardMaterial({ color: 0xD6CFC2, roughness: 0.75, metalness: 0.05 });
             const table = new THREE.Mesh(tableGeo, tableMat);
             table.position.set(-0.3, -0.6, 0.4);
-            table.receiveShadow = true;
             hardwareRoot.add(table);
 
             const matGeo = new THREE.BoxGeometry(28.5, 0.08, 16.5);
             const matMaterial = new THREE.MeshStandardMaterial({ color: 0xE5E0D5, roughness: 0.85 });
             const esdMat = new THREE.Mesh(matGeo, matMaterial);
             esdMat.position.set(-0.3, 0.04, 0.4);
-            esdMat.receiveShadow = true;
             hardwareRoot.add(esdMat);
 
             const grid = new THREE.GridHelper(28, 28, 0xB8B2A6, 0xCFCAC0);
@@ -746,8 +897,6 @@
                 new THREE.MeshStandardMaterial({ color: 0x2C2C2A, roughness: 0.6 })
             );
             base.position.y = 0.125;
-            base.castShadow = true;
-            base.receiveShadow = true;
             group.add(base);
 
             const plugBody = new THREE.Mesh(
@@ -755,7 +904,6 @@
                 new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 })
             );
             plugBody.position.set(-1.1, 0.8, 2.0);
-            plugBody.castShadow = true;
             group.add(plugBody);
 
             const mcbBody = new THREE.Mesh(
@@ -763,7 +911,6 @@
                 new THREE.MeshStandardMaterial({ color: 0xF4F1EA, roughness: 0.3 })
             );
             mcbBody.position.set(-0.6, 1.8, -0.8);
-            mcbBody.castShadow = true;
             group.add(mcbBody);
 
             const mcbStripe = new THREE.Mesh(
@@ -831,8 +978,6 @@
             const coreMat = new THREE.MeshStandardMaterial({ color: 0x4A4946, metalness: 0.7, roughness: 0.35 });
             const coreBlock = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.8, 2.8), coreMat);
             coreBlock.position.y = 2.0;
-            coreBlock.castShadow = true;
-            coreBlock.receiveShadow = true;
             group.add(coreBlock);
 
             const flange = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.2, 3.2), coreMat);
@@ -842,7 +987,6 @@
             const bobbinMat = new THREE.MeshStandardMaterial({ color: 0xF4F1EA, roughness: 0.45 });
             const bobbin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.9, 3.6), bobbinMat);
             bobbin.position.y = 2.0;
-            bobbin.castShadow = true;
             group.add(bobbin);
 
             const copperMat = new THREE.MeshStandardMaterial({ color: 0xB86B14, metalness: 0.75, roughness: 0.28 });
@@ -858,28 +1002,62 @@
             hardwareRoot.add(group);
         }
 
+        // Procedural Breadboard Top Texture (replaces 600+ individual hole meshes for instant mobile loading)
+        function createBreadboardTopTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 320;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#FAF8F5';
+            ctx.fillRect(0, 0, 512, 320);
+
+            // Top & Bottom Power Rails
+            ctx.fillStyle = '#C84B31';
+            ctx.fillRect(16, 18, 480, 4);
+            ctx.fillRect(16, 282, 480, 4);
+
+            ctx.fillStyle = '#1D5B4C';
+            ctx.fillRect(16, 36, 480, 4);
+            ctx.fillRect(16, 298, 480, 4);
+
+            // Center DIP IC Trench
+            ctx.fillStyle = '#DFDBD0';
+            ctx.fillRect(12, 148, 488, 24);
+
+            // Crisp Tie-Point Matrix Dots
+            ctx.fillStyle = '#3D3C38';
+            for (let x = 24; x <= 488; x += 12) {
+                // Power rail tie-points
+                ctx.fillRect(x - 2, 26, 4, 4);
+                ctx.fillRect(x - 2, 290, 4, 4);
+                // Upper terminal strip
+                for (let y = 62; y <= 134; y += 16) {
+                    ctx.fillRect(x - 2, y - 2, 4, 4);
+                }
+                // Lower terminal strip
+                for (let y = 186; y <= 258; y += 16) {
+                    ctx.fillRect(x - 2, y - 2, 4, 4);
+                }
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
         function buildBreadboardAndCircuit() {
             const group = new THREE.Group();
             group.position.set(1.2, 0.08, -1.8);
 
-            const bbGeo = new THREE.BoxGeometry(11.5, 0.45, 7.2);
-            const bbMat = new THREE.MeshStandardMaterial({ color: 0xFAF8F5, roughness: 0.55 });
-            const breadboard = new THREE.Mesh(bbGeo, bbMat);
+            const bbTopTex = createBreadboardTopTexture();
+            const bbSideMat = new THREE.MeshStandardMaterial({ color: 0xFAF8F5, roughness: 0.55 });
+            const bbTopMat = new THREE.MeshStandardMaterial({ map: bbTopTex, roughness: 0.55 });
+
+            const breadboard = new THREE.Mesh(
+                new THREE.BoxGeometry(11.5, 0.45, 7.2),
+                [bbSideMat, bbSideMat, bbTopMat, bbSideMat, bbSideMat, bbSideMat]
+            );
             breadboard.position.y = 0.225;
-            breadboard.castShadow = true;
-            breadboard.receiveShadow = true;
             group.add(breadboard);
-
-            const redLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0xC84B31 }));
-            redLine.position.set(0, 0.46, -3.1);
-            group.add(redLine);
-            const blueLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0x1D5B4C }));
-            blueLine.position.set(0, 0.46, 3.1);
-            group.add(blueLine);
-
-            const trench = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.08, 0.35), new THREE.MeshStandardMaterial({ color: 0xD8D4C8 }));
-            trench.position.set(0, 0.43, 0);
-            group.add(trench);
 
             // --- A. 4x 1N4007 Bridge Rectifier Diodes ---
             const rectGroup = new THREE.Group();
@@ -902,15 +1080,14 @@
             capGroup.position.set(-0.9, 0.45, -0.6);
 
             const capBody = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.76, 0.76, 2.4, 28),
+                new THREE.CylinderGeometry(0.76, 0.76, 2.4, 24),
                 new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.35, metalness: 0.2 })
             );
             capBody.position.y = 1.25;
-            capBody.castShadow = true;
             capGroup.add(capBody);
 
             const capTop = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.72, 0.72, 0.05, 28),
+                new THREE.CylinderGeometry(0.72, 0.72, 0.05, 24),
                 new THREE.MeshStandardMaterial({ color: 0xD8D4C8, metalness: 0.85, roughness: 0.2 })
             );
             capTop.position.y = 2.46;
@@ -924,7 +1101,7 @@
             capGroup.add(negStripe);
 
             const ceramicCap = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.3, 0.3, 0.14, 16),
+                new THREE.CylinderGeometry(0.3, 0.3, 0.14, 14),
                 new THREE.MeshStandardMaterial({ color: 0xC84B31, roughness: 0.5 })
             );
             ceramicCap.rotation.x = Math.PI / 2;
@@ -941,7 +1118,6 @@
             const sinkMat = new THREE.MeshStandardMaterial({ color: 0xC4C0B6, metalness: 0.8, roughness: 0.28 });
             const sinkBack = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.6, 0.25), sinkMat);
             sinkBack.position.set(0, 1.5, -0.35);
-            sinkBack.castShadow = true;
             regGroup.add(sinkBack);
 
             for (let i = -0.6; i <= 0.6; i += 0.3) {
@@ -1009,421 +1185,22 @@
                 new THREE.MeshStandardMaterial({ color: 0x1D5B4C, roughness: 0.4 })
             );
             termBlock.position.set(5.1, 0.9, 1.5);
-            termBlock.castShadow = true;
             group.add(termBlock);
 
             hardwareRoot.add(group);
-        }
-        ];
-
-        // ==========================================
-        // 2. INITIALIZE THREE.JS SCENE (DAYTIME LAB)
-        // ==========================================
-        window.onload = function () {
-            initScene();
-            buildWorkbench();
-            buildACInputAndProtection();
-            buildTransformer();
-            buildBreadboardAndCircuit();
-            buildLeadAcidBattery();
-            buildWiFiRouter();
-            buildDigitalMultimeter();
-            buildAllWiringAndParticles();
-            createFloatingLabels();
-            updateSimulationVisuals();
-            selectComponent('regulator');
-
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('pointerdown', onPointerDown);
-
-            animate();
-        };
-
-        function initScene() {
-            const container = document.getElementById('canvas-container');
-            scene = new THREE.Scene();
-            // Warm architectural daylight studio paper background
-            scene.background = new THREE.Color(0xEAE6DF);
-            scene.fog = new THREE.FogExp2(0xEAE6DF, 0.008);
-
-            camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 200);
-            camera.position.set(0, 14.5, 21.5);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            container.appendChild(renderer.domElement);
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.06;
-            controls.maxPolarAngle = Math.PI / 2 - 0.03;
-            controls.minDistance = 6;
-            controls.maxDistance = 45;
-            controls.target.set(0, 1.2, 0.5);
-
-            // Bright Daytime Engineering Lab Lighting
-            const ambientLight = new THREE.AmbientLight(0xFFFDF9, 0.82);
-            scene.add(ambientLight);
-
-            const mainDirLight = new THREE.DirectionalLight(0xFFFFFF, 0.9);
-            mainDirLight.position.set(16, 28, 18);
-            mainDirLight.castShadow = true;
-            mainDirLight.shadow.mapSize.width = 2048;
-            mainDirLight.shadow.mapSize.height = 2048;
-            mainDirLight.shadow.camera.near = 5;
-            mainDirLight.shadow.camera.far = 65;
-            const d = 22;
-            mainDirLight.shadow.camera.left = -d;
-            mainDirLight.shadow.camera.right = d;
-            mainDirLight.shadow.camera.top = d;
-            mainDirLight.shadow.camera.bottom = -d;
-            mainDirLight.shadow.bias = -0.0005;
-            scene.add(mainDirLight);
-
-            const fillLight = new THREE.DirectionalLight(0xF4F1EA, 0.45);
-            fillLight.position.set(-18, 14, -10);
-            scene.add(fillLight);
-        }
-
-        // Helper to register clickable 3D groups for the Component Inspector
-        function registerInspectable(object3D, componentId) {
-            object3D.userData.componentId = componentId;
-            object3D.traverse((child) => {
-                if (child.isMesh) {
-                    child.userData.componentId = componentId;
-                    inspectableMeshes.push(child);
-                }
-            });
-        }
-
-        // ==========================================
-        // 3. BUILD 3D HARDWARE MODELS
-        // ==========================================
-
-        // 3.1 Daytime Architectural Birch & Anodized Aluminium Workbench
-        function buildWorkbench() {
-            // Warm Birch / Light Oak Lab Bench Slab
-            const tableGeo = new THREE.BoxGeometry(36, 1.2, 22);
-            const tableMat = new THREE.MeshStandardMaterial({ color: 0xD6CFC2, roughness: 0.75, metalness: 0.05 });
-            const table = new THREE.Mesh(tableGeo, tableMat);
-            table.position.set(0, -0.6, 0.5);
-            table.receiveShadow = true;
-            scene.add(table);
-
-            // Light Grey Matte Technical ESD Surface Mat
-            const matGeo = new THREE.BoxGeometry(33, 0.08, 19);
-            const matMaterial = new THREE.MeshStandardMaterial({ color: 0xE5E0D5, roughness: 0.85 });
-            const esdMat = new THREE.Mesh(matGeo, matMaterial);
-            esdMat.position.set(0, 0.04, 0.5);
-            esdMat.receiveShadow = true;
-            scene.add(esdMat);
-
-            // Crisp Technical Drafting Grid Hairlines on Bench
-            const grid = new THREE.GridHelper(32, 32, 0xB8B2A6, 0xCFCAC0);
-            grid.position.set(0, 0.09, 0.5);
-            scene.add(grid);
-        }
-
-        // 3.2 Stage 1: 230V AC Input Socket, MCB & Glass Fuse Holder
-        function buildACInputAndProtection() {
-            const group = new THREE.Group();
-            group.position.set(-12.5, 0.08, -3.5);
-
-            const base = new THREE.Mesh(
-                new THREE.BoxGeometry(4.8, 0.25, 6.5),
-                new THREE.MeshStandardMaterial({ color: 0x2C2C2A, roughness: 0.6 })
-            );
-            base.position.y = 0.125;
-            base.castShadow = true;
-            base.receiveShadow = true;
-            group.add(base);
-
-            const plugBody = new THREE.Mesh(
-                new THREE.BoxGeometry(1.8, 1.1, 1.6),
-                new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 })
-            );
-            plugBody.position.set(-1.1, 0.8, 2.0);
-            plugBody.castShadow = true;
-            group.add(plugBody);
-
-            const mcbBody = new THREE.Mesh(
-                new THREE.BoxGeometry(1.8, 3.2, 2.6),
-                new THREE.MeshStandardMaterial({ color: 0xF4F1EA, roughness: 0.3 })
-            );
-            mcbBody.position.set(-0.6, 1.8, -0.8);
-            mcbBody.castShadow = true;
-            group.add(mcbBody);
-
-            // Signal Orange Industrial Specification Stripe on MCB
-            const mcbStripe = new THREE.Mesh(
-                new THREE.BoxGeometry(1.84, 0.35, 2.62),
-                new THREE.MeshStandardMaterial({ color: 0xC84B31 })
-            );
-            mcbStripe.position.set(-0.6, 2.6, -0.8);
-            group.add(mcbStripe);
-
-            // Interactive MCB Toggle Lever
-            const leverGroup = new THREE.Group();
-            leverGroup.position.set(-0.6, 1.8, 0.5);
-            const leverMesh = new THREE.Mesh(
-                new THREE.BoxGeometry(0.7, 0.35, 0.9),
-                new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.3 })
-            );
-            leverMesh.position.z = 0.35;
-            leverMesh.userData.isMcbSwitch = true;
-            leverGroup.add(leverMesh);
-            leverGroup.rotation.x = -0.45;
-            mcbLeverMesh = leverGroup;
-            clickableObjects.push(leverMesh);
-            group.add(leverGroup);
-
-            // Inline Glass Fuse Holder + Transparent Glass Tube
-            const fuseBase = new THREE.Mesh(
-                new THREE.BoxGeometry(0.9, 0.4, 2.4),
-                new THREE.MeshStandardMaterial({ color: 0x141413 })
-            );
-            fuseBase.position.set(1.3, 0.45, -0.6);
-            group.add(fuseBase);
-
-            const capMat = new THREE.MeshStandardMaterial({ color: 0xD4D4D0, metalness: 0.8, roughness: 0.25 });
-            const cap1 = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.4, 16), capMat);
-            cap1.rotation.x = Math.PI / 2;
-            cap1.position.set(1.3, 0.85, -1.4);
-            group.add(cap1);
-
-            const cap2 = cap1.clone();
-            cap2.position.set(1.3, 0.85, 0.2);
-            group.add(cap2);
-
-            const glassTube = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.24, 0.24, 1.3, 16),
-                new THREE.MeshPhysicalMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.45, roughness: 0.1 })
-            );
-            glassTube.rotation.x = Math.PI / 2;
-            glassTube.position.set(1.3, 0.85, -0.6);
-            group.add(glassTube);
-
-            fuseWireMesh = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.04, 0.04, 1.3, 8),
-                new THREE.MeshBasicMaterial({ color: 0xC84B31 })
-            );
-            fuseWireMesh.rotation.x = Math.PI / 2;
-            fuseWireMesh.position.set(1.3, 0.85, -0.6);
-            group.add(fuseWireMesh);
-
-            registerInspectable(group, 'mcb');
-            scene.add(group);
-        }
-
-        // 3.3 Stage 2: 230V to 15V Step-Down Iron-Core Transformer
-        function buildTransformer() {
-            const group = new THREE.Group();
-            group.position.set(-6.8, 0.08, -3.5);
-
-            const coreMat = new THREE.MeshStandardMaterial({ color: 0x4A4946, metalness: 0.7, roughness: 0.35 });
-            const coreBlock = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.8, 2.8), coreMat);
-            coreBlock.position.y = 2.0;
-            coreBlock.castShadow = true;
-            coreBlock.receiveShadow = true;
-            group.add(coreBlock);
-
-            const flange = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.2, 3.2), coreMat);
-            flange.position.y = 0.1;
-            group.add(flange);
-
-            const bobbinMat = new THREE.MeshStandardMaterial({ color: 0xF4F1EA, roughness: 0.45 });
-            const bobbin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.9, 3.6), bobbinMat);
-            bobbin.position.y = 2.0;
-            bobbin.castShadow = true;
-            group.add(bobbin);
-
-            const copperMat = new THREE.MeshStandardMaterial({ color: 0xB86B14, metalness: 0.75, roughness: 0.28 });
-            const coilFront = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.5, 24), copperMat);
-            coilFront.position.set(0, 2.0, 1.35);
-            group.add(coilFront);
-
-            const coilBack = coilFront.clone();
-            coilBack.position.set(0, 2.0, -1.35);
-            group.add(coilBack);
-
-            registerInspectable(group, 'transformer');
-            scene.add(group);
-        }
-
-        // 3.4 Stage 3–6: Solderless Breadboard with Rectifier, Filter, LM317 & OR-ing Diodes
-        function buildBreadboardAndCircuit() {
-            const group = new THREE.Group();
-            group.position.set(1.2, 0.08, -1.8);
-
-            // Warm Cream Solderless Breadboard Base
-            const bbGeo = new THREE.BoxGeometry(11.5, 0.45, 7.2);
-            const bbMat = new THREE.MeshStandardMaterial({ color: 0xFAF8F5, roughness: 0.55 });
-            const breadboard = new THREE.Mesh(bbGeo, bbMat);
-            breadboard.position.y = 0.225;
-            breadboard.castShadow = true;
-            breadboard.receiveShadow = true;
-            group.add(breadboard);
-
-            // Signal Orange & Instrument Green Power Rail Stripes
-            const redLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0xC84B31 }));
-            redLine.position.set(0, 0.46, -3.1);
-            group.add(redLine);
-            const blueLine = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.02, 0.12), new THREE.MeshBasicMaterial({ color: 0x1D5B4C }));
-            blueLine.position.set(0, 0.46, 3.1);
-            group.add(blueLine);
-
-            const trench = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.08, 0.35), new THREE.MeshStandardMaterial({ color: 0xD8D4C8 }));
-            trench.position.set(0, 0.43, 0);
-            group.add(trench);
-
-            // --- A. 4x 1N4007 Bridge Rectifier Diodes ---
-            const rectGroup = new THREE.Group();
-            const diodePositions = [
-                { x: -3.8, z: -1.1 },
-                { x: -2.7, z: -1.1 },
-                { x: -3.8, z: 1.1 },
-                { x: -2.7, z: 1.1 }
-            ];
-            diodePositions.forEach((pos) => {
-                const d = createDiodeMesh(0.2, 0.85);
-                d.position.set(pos.x, 0.8, pos.z);
-                rectGroup.add(d);
-            });
-            registerInspectable(rectGroup, 'rectifier');
-            group.add(rectGroup);
-
-            // --- B. 2200uF 25V Electrolytic Filter Capacitor & 0.1uF Ceramic Cap ---
-            const capGroup = new THREE.Group();
-            capGroup.position.set(-0.9, 0.45, -0.6);
-
-            const capBody = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.72, 0.72, 2.3, 28),
-                new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.35, metalness: 0.2 })
-            );
-            capBody.position.y = 1.25;
-            capBody.castShadow = true;
-            capGroup.add(capBody);
-
-            const capTop = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.68, 0.68, 0.05, 28),
-                new THREE.MeshStandardMaterial({ color: 0xD8D4C8, metalness: 0.85, roughness: 0.2 })
-            );
-            capTop.position.y = 2.41;
-            capGroup.add(capTop);
-
-            const negStripe = new THREE.Mesh(
-                new THREE.BoxGeometry(0.3, 2.31, 0.15),
-                new THREE.MeshBasicMaterial({ color: 0xD8D4C8 })
-            );
-            negStripe.position.set(0.62, 1.25, 0);
-            capGroup.add(negStripe);
-
-            const ceramicCap = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.28, 0.28, 0.12, 16),
-                new THREE.MeshStandardMaterial({ color: 0xC84B31, roughness: 0.5 })
-            );
-            ceramicCap.rotation.x = Math.PI / 2;
-            ceramicCap.position.set(0.3, 0.4, 1.8);
-            capGroup.add(ceramicCap);
-
-            registerInspectable(capGroup, 'capacitor');
-            group.add(capGroup);
-
-            // --- C. LM317 TO-220 Regulator + Extruded Aluminum Heatsink ---
-            const regGroup = new THREE.Group();
-            regGroup.position.set(1.5, 0.45, -1.0);
-
-            const sinkMat = new THREE.MeshStandardMaterial({ color: 0xC4C0B6, metalness: 0.8, roughness: 0.28 });
-            const sinkBack = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 0.25), sinkMat);
-            sinkBack.position.set(0, 1.5, -0.35);
-            sinkBack.castShadow = true;
-            regGroup.add(sinkBack);
-
-            for (let i = -0.6; i <= 0.6; i += 0.3) {
-                const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.5, 0.6), sinkMat);
-                fin.position.set(i, 1.5, -0.65);
-                regGroup.add(fin);
-            }
-
-            const icBody = new THREE.Mesh(
-                new THREE.BoxGeometry(1.05, 1.2, 0.35),
-                new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 })
-            );
-            icBody.position.set(0, 1.35, -0.05);
-            regGroup.add(icBody);
-
-            for (let p = -0.32; p <= 0.32; p += 0.32) {
-                const pin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.85, 0.08), sinkMat);
-                pin.position.set(p, 0.4, -0.05);
-                regGroup.add(pin);
-            }
-
-            const r1 = createResistorMesh();
-            r1.position.set(-0.1, 0.27, 1.85);
-            regGroup.add(r1);
-
-            const r2 = createResistorMesh();
-            r2.position.set(-0.1, 0.27, 2.65);
-            regGroup.add(r2);
-
-            registerInspectable(regGroup, 'regulator');
-            group.add(regGroup);
-
-            // --- D. Seamless OR-ing Schottky Diodes D1 & D2 + Trickle Charge Resistor ---
-            const switchingGroup = new THREE.Group();
-            const d1 = createDiodeMesh(0.24, 1.0);
-            d1.position.set(3.5, 0.82, -0.6);
-            switchingGroup.add(d1);
-
-            const d2 = createDiodeMesh(0.24, 1.0);
-            d2.position.set(3.5, 0.82, 1.2);
-            switchingGroup.add(d2);
-
-            const rChg = createResistorMesh();
-            rChg.position.set(2.9, 0.72, 2.2);
-            switchingGroup.add(rChg);
-
-            registerInspectable(switchingGroup, 'diodes');
-            group.add(switchingGroup);
-
-            // --- E. Status Indicator LEDs ---
-            ledMainsMesh = createLEDMesh(0x1D5B4C);
-            ledMainsMesh.position.set(4.5, 0.45, -2.0);
-            group.add(ledMainsMesh);
-
-            ledBackupMesh = createLEDMesh(0xB86B14);
-            ledBackupMesh.position.set(4.5, 0.45, -1.0);
-            group.add(ledBackupMesh);
-
-            ledFaultMesh = createLEDMesh(0xC84B31);
-            ledFaultMesh.position.set(4.5, 0.45, 0.0);
-            group.add(ledFaultMesh);
-
-            const termBlock = new THREE.Mesh(
-                new THREE.BoxGeometry(0.9, 0.95, 2.2),
-                new THREE.MeshStandardMaterial({ color: 0x1D5B4C, roughness: 0.4 })
-            );
-            termBlock.position.set(5.1, 0.9, 1.5);
-            termBlock.castShadow = true;
-            group.add(termBlock);
-
-            scene.add(group);
         }
 
         function createDiodeMesh(radius, length) {
             const dGroup = new THREE.Group();
             const body = new THREE.Mesh(
-                new THREE.CylinderGeometry(radius, radius, length, 16),
+                new THREE.CylinderGeometry(radius, radius, length, 14),
                 new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 })
             );
             body.rotation.z = Math.PI / 2;
             dGroup.add(body);
 
             const band = new THREE.Mesh(
-                new THREE.CylinderGeometry(radius + 0.006, radius + 0.006, length * 0.24, 16),
+                new THREE.CylinderGeometry(radius + 0.006, radius + 0.006, length * 0.24, 14),
                 new THREE.MeshBasicMaterial({ color: 0xF4F1EA })
             );
             band.rotation.z = Math.PI / 2;
@@ -1441,7 +1218,7 @@
         function createResistorMesh() {
             const rGroup = new THREE.Group();
             const body = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.15, 0.15, 0.75, 14),
+                new THREE.CylinderGeometry(0.15, 0.15, 0.75, 12),
                 new THREE.MeshStandardMaterial({ color: 0xD8CFC2, roughness: 0.5 })
             );
             body.rotation.z = Math.PI / 2;
@@ -1450,7 +1227,7 @@
             const colors = [0xC84B31, 0xB86B14, 0x141413];
             colors.forEach((col, idx) => {
                 const band = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.156, 0.156, 0.08, 14),
+                    new THREE.CylinderGeometry(0.156, 0.156, 0.08, 12),
                     new THREE.MeshBasicMaterial({ color: col })
                 );
                 band.rotation.z = Math.PI / 2;
@@ -1478,11 +1255,11 @@
                 opacity: 0.92,
                 roughness: 0.25
             });
-            const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.45, 16), domeMat);
+            const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.45, 14), domeMat);
             cyl.position.y = 0.6;
             ledGroup.add(cyl);
 
-            const topSphere = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), domeMat);
+            const topSphere = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), domeMat);
             topSphere.position.y = 0.82;
             ledGroup.add(topSphere);
 
@@ -1500,8 +1277,6 @@
                 new THREE.MeshStandardMaterial({ color: 0x1F1F1D, roughness: 0.45 })
             );
             caseMesh.position.y = 2.15;
-            caseMesh.castShadow = true;
-            caseMesh.receiveShadow = true;
             group.add(caseMesh);
 
             const lidMesh = new THREE.Mesh(
@@ -1542,14 +1317,14 @@
             group.add(plateMesh);
 
             const redTerm = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.34, 0.34, 0.45, 16),
+                new THREE.CylinderGeometry(0.34, 0.34, 0.45, 14),
                 new THREE.MeshStandardMaterial({ color: 0xC84B31, roughness: 0.3 })
             );
             redTerm.position.set(-1.8, 4.55, -0.8);
             group.add(redTerm);
 
             const blkTerm = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.34, 0.34, 0.45, 16),
+                new THREE.CylinderGeometry(0.34, 0.34, 0.45, 14),
                 new THREE.MeshStandardMaterial({ color: 0x2C2C2A, roughness: 0.3 })
             );
             blkTerm.position.set(1.8, 4.55, -0.8);
@@ -1569,8 +1344,6 @@
                 new THREE.MeshStandardMaterial({ color: 0x1F1F1D, roughness: 0.38, metalness: 0.15 })
             );
             body.position.y = 0.65;
-            body.castShadow = true;
-            body.receiveShadow = true;
             group.add(body);
 
             const antMat = new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 });
@@ -1578,13 +1351,12 @@
                 const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.17, 4.3, 12), antMat);
                 ant.position.set(xOffset, 2.75, -1.7);
                 ant.rotation.z = xOffset < 0 ? 0.12 : -0.12;
-                ant.castShadow = true;
                 group.add(ant);
             });
 
             for (let i = 0; i < 4; i++) {
                 const rLedMat = new THREE.MeshBasicMaterial({ color: 0x1D5B4C });
-                const rLed = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), rLedMat);
+                const rLed = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), rLedMat);
                 rLed.position.set(-1.2 + i * 0.8, 0.72, 2.02);
                 routerLedMeshes.push(rLed);
                 group.add(rLed);
@@ -1606,7 +1378,6 @@
             );
             dmmBody.position.y = 0.98;
             dmmBody.rotation.x = 0.22;
-            dmmBody.castShadow = true;
             group.add(dmmBody);
 
             const facePlate = new THREE.Mesh(
@@ -1618,7 +1389,7 @@
             group.add(facePlate);
 
             const dial = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.9, 0.9, 0.28, 24),
+                new THREE.CylinderGeometry(0.9, 0.9, 0.28, 20),
                 new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.3 })
             );
             dial.position.set(0, 1.76, 0.65);
@@ -1643,92 +1414,12 @@
             hardwareRoot.add(group);
         }
 
-        // 3.6 Stage 8: 12V Dual-Antenna Wi-Fi Router Load
-        function buildWiFiRouter() {
-            const group = new THREE.Group();
-            group.position.set(11.5, 0.08, -1.8);
-
-            const body = new THREE.Mesh(
-                new THREE.BoxGeometry(5.2, 0.9, 3.8),
-                new THREE.MeshStandardMaterial({ color: 0x1F1F1D, roughness: 0.38, metalness: 0.15 })
-            );
-            body.position.y = 0.65;
-            body.castShadow = true;
-            body.receiveShadow = true;
-            group.add(body);
-
-            const antMat = new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.4 });
-            [-2.1, 2.1].forEach((xOffset) => {
-                const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.16, 4.2, 12), antMat);
-                ant.position.set(xOffset, 2.7, -1.7);
-                ant.rotation.z = xOffset < 0 ? 0.12 : -0.12;
-                ant.castShadow = true;
-                group.add(ant);
-            });
-
-            for (let i = 0; i < 4; i++) {
-                const rLedMat = new THREE.MeshBasicMaterial({ color: 0x1D5B4C });
-                const rLed = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12), rLedMat);
-                rLed.position.set(-1.2 + i * 0.8, 0.72, 1.92);
-                routerLedMeshes.push(rLed);
-                group.add(rLed);
-            }
-
-            registerInspectable(group, 'router');
-            scene.add(group);
-        }
-
-        // 3.7 Stage 9: Digital Multimeter (DMM) with Live 7-Segment Canvas Display
-        function buildDigitalMultimeter() {
-            const group = new THREE.Group();
-            group.position.set(10.8, 0.08, 5.5);
-            group.rotation.y = -0.25;
-
-            const dmmBody = new THREE.Mesh(
-                new THREE.BoxGeometry(3.4, 1.3, 5.2),
-                new THREE.MeshStandardMaterial({ color: 0xD9822B, roughness: 0.45 })
-            );
-            dmmBody.position.y = 0.95;
-            dmmBody.rotation.x = 0.22;
-            dmmBody.castShadow = true;
-            group.add(dmmBody);
-
-            const facePlate = new THREE.Mesh(
-                new THREE.BoxGeometry(3.0, 0.1, 4.7),
-                new THREE.MeshStandardMaterial({ color: 0x222220, roughness: 0.6 })
-            );
-            facePlate.position.set(0, 1.58, 0.05);
-            facePlate.rotation.x = 0.22;
-            group.add(facePlate);
-
-            const dial = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.85, 0.85, 0.28, 24),
-                new THREE.MeshStandardMaterial({ color: 0x141413, roughness: 0.3 })
-            );
-            dial.position.set(0, 1.72, 0.65);
-            dial.rotation.x = 0.22;
-            group.add(dial);
-
-            dmmScreenCanvas = document.createElement('canvas');
-            dmmScreenCanvas.width = 512;
-            dmmScreenCanvas.height = 256;
-            dmmCtx = dmmScreenCanvas.getContext('2d');
-            dmmScreenTexture = new THREE.CanvasTexture(dmmScreenCanvas);
-
-            const lcdScreen = new THREE.Mesh(
-                new THREE.PlaneGeometry(2.5, 1.25),
-                new THREE.MeshBasicMaterial({ map: dmmScreenTexture })
-            );
-            lcdScreen.position.set(0, 1.88, -1.15);
-            lcdScreen.rotation.x = -Math.PI / 2 + 0.22;
-            group.add(lcdScreen);
-
-            registerInspectable(group, 'dmm');
-            scene.add(group);
-        }
-
         function updateDMMScreen(voltageStr, modeLabel) {
-            if (!dmmCtx) return;
+            const svgReadout = document.getElementById('svg-dmm-readout');
+            if (svgReadout) {
+                svgReadout.textContent = `DMM BUS: ${voltageStr} (${modeLabel})`;
+            }
+            if (!dmmCtx || !dmmScreenTexture) return;
             dmmCtx.fillStyle = '#C5CEC0';
             dmmCtx.fillRect(0, 0, 512, 256);
 
@@ -1754,9 +1445,9 @@
             // 1. 230V AC Input to Transformer Primary
             createWireWithCurrent(
                 [
-                    new THREE.Vector3(-10.9, 0.9, -3.8),
-                    new THREE.Vector3(-9.3, 1.4, -3.8),
-                    new THREE.Vector3(-8.0, 1.8, -3.8)
+                    new THREE.Vector3(-10.9, 0.9, -3.5),
+                    new THREE.Vector3(-9.3, 1.4, -3.5),
+                    new THREE.Vector3(-8.0, 1.8, -3.5)
                 ],
                 0x2C2C2A,
                 0x1D5B4C,
@@ -1841,15 +1532,14 @@
 
         function createWireWithCurrent(points, wireColorHex, particleColorHex, pathType) {
             const curve = new THREE.CatmullRomCurve3(points);
-            const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.08, 10, false);
+            const tubeGeo = new THREE.TubeGeometry(curve, 24, 0.08, 8, false);
             const tubeMat = new THREE.MeshStandardMaterial({ color: wireColorHex, roughness: 0.45 });
             const wireMesh = new THREE.Mesh(tubeGeo, tubeMat);
-            wireMesh.castShadow = true;
             hardwareRoot.add(wireMesh);
 
             const spheres = [];
-            const numSpheres = 6;
-            const sphereGeo = new THREE.SphereGeometry(0.16, 10, 10);
+            const numSpheres = 5;
+            const sphereGeo = new THREE.SphereGeometry(0.16, 8, 8);
             const sphereMat = new THREE.MeshBasicMaterial({ color: particleColorHex });
 
             for (let i = 0; i < numSpheres; i++) {
@@ -1882,18 +1572,20 @@
                     <div class="type-size-3 text-[#575653] whitespace-nowrap">${item.subtitle}</div>
                 `;
                 container.appendChild(el);
-                labelElements.push({ el, pos: item.pos });
+                labelElements.push({
+                    el,
+                    pos: new THREE.Vector3(item.pos.x, item.pos.y, item.pos.z)
+                });
             });
         }
 
         function updateFloatingLabelsPosition() {
-            if (!simState.labelsVisible) return;
+            if (!simState.labelsVisible || !simState.webglActive || !camera) return;
             const container = document.getElementById('canvas-container');
-            const halfW = container.clientWidth / 2;
-            const halfH = container.clientHeight / 2;
+            const halfW = (container.clientWidth || window.innerWidth) / 2;
+            const halfH = (container.clientHeight || window.innerHeight) / 2;
 
             labelElements.forEach(({ el, pos }) => {
-                // Account for the 1.42x hardwareRoot scale when projecting 3D callout coordinates
                 const worldPos = pos.clone().multiplyScalar(HARDWARE_SCALE);
                 const projected = worldPos.project(camera);
                 if (projected.z > 1) {
@@ -1961,13 +1653,11 @@
             const telDiode = document.getElementById('tel-diode');
 
             if (simState.faultTripped) {
-                // STATE 3: SHORT CIRCUIT / OVERLOAD FAULT TRIPPED
-                mcbLeverMesh.rotation.x = 0.45;
-                fuseWireMesh.visible = false;
-
-                ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
-                ledBackupMesh.userData.mat.emissiveIntensity = 0.05;
-                ledFaultMesh.userData.mat.emissiveIntensity = 1.4;
+                if (mcbLeverMesh) mcbLeverMesh.rotation.x = 0.45;
+                if (fuseWireMesh) fuseWireMesh.visible = false;
+                if (ledMainsMesh) ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
+                if (ledBackupMesh) ledBackupMesh.userData.mat.emissiveIntensity = 0.05;
+                if (ledFaultMesh) ledFaultMesh.userData.mat.emissiveIntensity = 1.4;
                 routerLedMeshes.forEach((m) => m.material.color.setHex(0x575653));
 
                 badge.textContent = 'FAULT: CB1 & F1 OPEN';
@@ -2000,13 +1690,11 @@
 
                 updateDMMScreen('00.00 V', 'FAULT');
             } else if (simState.mainsOn) {
-                // STATE 1: 230V AC MAINS ON
-                mcbLeverMesh.rotation.x = -0.45;
-                fuseWireMesh.visible = true;
-
-                ledMainsMesh.userData.mat.emissiveIntensity = 1.2;
-                ledBackupMesh.userData.mat.emissiveIntensity = 0.08;
-                ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
+                if (mcbLeverMesh) mcbLeverMesh.rotation.x = -0.45;
+                if (fuseWireMesh) fuseWireMesh.visible = true;
+                if (ledMainsMesh) ledMainsMesh.userData.mat.emissiveIntensity = 1.2;
+                if (ledBackupMesh) ledBackupMesh.userData.mat.emissiveIntensity = 0.08;
+                if (ledFaultMesh) ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
                 routerLedMeshes.forEach((m) => m.material.color.setHex(0x1D5B4C));
 
                 badge.textContent = 'MAINS 230V ACTIVE';
@@ -2045,13 +1733,11 @@
 
                 updateDMMScreen('13.45 V', 'MAINS');
             } else {
-                // STATE 2: MAINS BLACKOUT -> SEAMLESS 12V SLA BATTERY BACKUP
-                mcbLeverMesh.rotation.x = 0.45;
-                fuseWireMesh.visible = true;
-
-                ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
-                ledBackupMesh.userData.mat.emissiveIntensity = 1.3;
-                ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
+                if (mcbLeverMesh) mcbLeverMesh.rotation.x = 0.45;
+                if (fuseWireMesh) fuseWireMesh.visible = true;
+                if (ledMainsMesh) ledMainsMesh.userData.mat.emissiveIntensity = 0.05;
+                if (ledBackupMesh) ledBackupMesh.userData.mat.emissiveIntensity = 1.3;
+                if (ledFaultMesh) ledFaultMesh.userData.mat.emissiveIntensity = 0.05;
                 routerLedMeshes.forEach((m) => m.material.color.setHex(0x1D5B4C));
 
                 badge.textContent = 'SLA 12V BACKUP ON';
@@ -2100,10 +1786,13 @@
                 if (el) el.classList.toggle('active', id === preset);
             });
 
+            if (!simState.webglActive || !camera || !controls) return;
+
             const container = document.getElementById('canvas-container');
-            const aspect = container ? container.clientWidth / Math.max(container.clientHeight, 1) : 1.5;
+            const w = (container && container.clientWidth) ? container.clientWidth : window.innerWidth;
+            const h = (container && container.clientHeight) ? container.clientHeight : (window.innerHeight - 180);
+            const aspect = w / Math.max(h, 1);
             const isPortrait = aspect < 1.0;
-            // Bring camera much closer so the 1.42x scaled hardware fills 85% of the viewport
             const portraitZoomFactor = isPortrait ? Math.min(1.42, 1.0 / Math.max(aspect, 0.52)) : 1.0;
 
             if (preset === 'overview') {
@@ -2124,6 +1813,7 @@
 
         // Dedicated One-Tap Magnification (+ / -)
         function zoomCamera(direction) {
+            if (!simState.webglActive || !camera || !controls) return;
             const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
             const factor = direction < 0 ? 0.8 : 1.25;
             const newLen = THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance);
@@ -2151,7 +1841,6 @@
                 labelEl.textContent = 'HIDE DOCK';
                 iconEl.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
             }
-            // Resize 3D canvas immediately to claim the freed vertical space
             setTimeout(() => {
                 onWindowResize();
             }, 20);
@@ -2177,9 +1866,10 @@
 
         // Raycaster for 3D Component Inspection & Direct MCB Switch Actuation
         function onPointerDown(event) {
-            if (event.target.tagName !== 'CANVAS') return;
+            if (!simState.webglActive || event.target.tagName !== 'CANVAS') return;
             const container = document.getElementById('canvas-container');
             const rect = container.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
             const mouse = new THREE.Vector2(
                 ((event.clientX - rect.left) / rect.width) * 2 - 1,
                 -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -2187,7 +1877,6 @@
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(mouse, camera);
 
-            // Check MCB toggle lever first
             const mcbIntersects = raycaster.intersectObjects(clickableObjects, true);
             if (mcbIntersects.length > 0) {
                 toggleMainsPower();
@@ -2195,7 +1884,6 @@
                 return;
             }
 
-            // Check any inspectable 3D hardware component
             const compIntersects = raycaster.intersectObjects(inspectableMeshes, true);
             if (compIntersects.length > 0) {
                 const compId = compIntersects[0].object.userData.componentId;
@@ -2204,45 +1892,53 @@
         }
 
         function onWindowResize() {
+            if (!simState.webglActive || !camera || !renderer) return;
             const container = document.getElementById('canvas-container');
             if (!container) return;
-            camera.aspect = container.clientWidth / Math.max(container.clientHeight, 1);
+            const safeW = container.clientWidth || window.innerWidth || 800;
+            const safeH = container.clientHeight || (window.innerHeight - 180) || 500;
+            camera.aspect = safeW / Math.max(safeH, 1);
             camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setSize(safeW, safeH);
         }
 
         // ==========================================
-        // 7. ANIMATION LOOP
+        // 7. ANIMATION LOOP (WITH ERROR GUARD)
         // ==========================================
         function animate() {
+            if (!simState.webglActive) return;
             requestAnimationFrame(animate);
-            controls.update();
+            try {
+                if (controls) controls.update();
 
-            particleSystems.forEach((sys) => {
-                let active = false;
-                if (!simState.faultTripped) {
-                    if (sys.pathType === 'ac_input' && simState.mainsOn) active = true;
-                    if (sys.pathType === 'mains_dc' && simState.mainsOn) active = true;
-                    if (sys.pathType === 'trickle_charge' && simState.mainsOn) active = true;
-                    if (sys.pathType === 'battery_backup' && !simState.mainsOn) active = true;
-                    if (sys.pathType === 'router_load') {
-                        active = true;
-                        sys.mat.color.setHex(simState.mainsOn ? 0x1D5B4C : 0xC84B31);
+                particleSystems.forEach((sys) => {
+                    let active = false;
+                    if (!simState.faultTripped) {
+                        if (sys.pathType === 'ac_input' && simState.mainsOn) active = true;
+                        if (sys.pathType === 'mains_dc' && simState.mainsOn) active = true;
+                        if (sys.pathType === 'trickle_charge' && simState.mainsOn) active = true;
+                        if (sys.pathType === 'battery_backup' && !simState.mainsOn) active = true;
+                        if (sys.pathType === 'router_load') {
+                            active = true;
+                            sys.mat.color.setHex(simState.mainsOn ? 0x1D5B4C : 0xC84B31);
+                        }
                     }
-                }
 
-                sys.spheres.forEach((sp) => {
-                    sp.mesh.visible = active;
-                    if (active) {
-                        sp.offset = (sp.offset + 0.0075) % 1;
-                        const pt = sys.curve.getPointAt(sp.offset);
-                        sp.mesh.position.copy(pt);
-                    }
+                    sys.spheres.forEach((sp) => {
+                        sp.mesh.visible = active;
+                        if (active) {
+                            sp.offset = (sp.offset + 0.0075) % 1;
+                            const pt = sys.curve.getPointAt(sp.offset);
+                            sp.mesh.position.copy(pt);
+                        }
+                    });
                 });
-            });
 
-            updateFloatingLabelsPosition();
-            renderer.render(scene, camera);
+                updateFloatingLabelsPosition();
+                renderer.render(scene, camera);
+            } catch (e) {
+                console.warn('Render frame error:', e);
+            }
         }
     </script>
 </body>
